@@ -3,7 +3,13 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Branch Attendance Reports</title>
+<title>Daily Performance Report</title>
+<link rel="manifest" href="manifest.json">
+<meta name="theme-color" content="#0b1f4b">
+<link rel="icon" href="icon-192.png">
+<link rel="apple-touch-icon" href="icon-192.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Daily Report">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Red+Hat+Display:wght@700&family=Red+Hat+Text:wght@400;600&display=swap" rel="stylesheet">
 <style>
@@ -40,13 +46,15 @@ button:focus-visible,.btn:focus-within,select:focus-visible,input:focus-visible,
 .bar b{flex:1 1 120px;font-size:15px}
 .msg{font-size:13px;padding:0 12px 10px;color:var(--mute);min-height:1em}
 .msg.ok{color:#118a4e}.msg.err{color:var(--acc)}
+h2.sec{font:700 22px/1.2 "Red Hat Display",sans-serif;margin:8px auto 0;max-width:1240px;grid-column:1/-1}
+#install{display:none}
 .empty{text-align:center;color:var(--mute);padding:40px 0}
 details summary{cursor:pointer;font-weight:600;min-height:32px}
 </style>
 </head>
 <body>
 <header>
-  <h1>Branch-wise attendance reports</h1>
+  <h1>Daily performance report</h1>
   <p>Data daalo, har branch ki report image ban jayegi. Copy dabao aur WhatsApp group me paste karo.</p>
 </header>
 
@@ -56,6 +64,7 @@ details summary{cursor:pointer;font-weight:600;min-height:32px}
       <label class="f">Report date<input type="date" id="date"></label>
       <label class="btn primary">Excel / CSV file chuno<input type="file" id="file" accept=".xlsx,.xls,.csv"></label>
       <button id="sample">Sample data dekho</button>
+      <button id="install">Phone me install karo</button>
       <label class="f">Branch column<select id="branchCol"></select></label>
     </div>
     <details>
@@ -67,6 +76,7 @@ details summary{cursor:pointer;font-weight:600;min-height:32px}
       <p class="note" style="margin-bottom:6px">Report me kaun se columns dikhane hain (aapki choice yaad rahegi):</p>
       <div class="cols" id="cols"></div>
     </div>
+    <p class="note" id="iosHint" hidden>iPhone par install: Safari me neeche Share button dabao, phir "Add to Home Screen" chuno.</p>
     <p class="note" id="status">Abhi sample data dikh raha hai. Apna data upload karte hi reports update ho jayengi.</p>
   </div>
 </section>
@@ -101,9 +111,12 @@ const SAMPLE = [
   ['North','UP WEST','UP','S. Tyagi','25-11-2026','Sandeep Kumar','H201','SO','16','6','20500','4100','0','0','20500','03:55','1','1','1200','09:40','10:10','48','45','18:00','18:10','07:50','01:40'],
   ['North','UP WEST','UP','S. Tyagi','25-11-2026','Neha Sharma','H202','ASM','12','4','15800','0','1','900','16700','03:10','2','0','0','09:35','10:05','39','36','17:50','18:00','07:45','01:30'],
   ['East','BIHAR','Bihar','K. Jha','25-11-2026','Manoj Jha','H301','SO','19','8','26300','5400','0','0','26300','04:30','3','2','3800','09:45','10:15','58','54','18:25','18:35','08:10','02:00'],
+  ['North','UP EAST','UP','R. Mishra','25-11-2026','Rakesh Mishra','H100','BM','6','3','12000','2500','0','0','12000','02:10','0','0','0','09:15','09:50','35','30','18:40','18:50','08:50','01:30'],
+  ['East','BIHAR','Bihar','K. Jha','25-11-2026','Kamal Jha','H300','BM','5','2','8000','0','0','0','8000','01:50','0','0','0','09:20','10:00','30','28','18:10','18:20','08:10','01:20'],
   ['East','BIHAR','Bihar','K. Jha','25-11-2026','Ravi Ranjan','H302','SO','11','3','9800','0','0','0','9800','02:45','1','0','0','11:00','11:25','41','38','18:30','18:40','07:05','01:55']
 ];
-let head = [], rows = [], rowDates = [], defs = [], usingSample = true;
+let head = [], rows = [], rowDates = [], defs = [], usingSample = true, desigIdx = -1;
+const isBM = r => desigIdx >= 0 && /^(bm|branch manager)$/i.test(String(r[desigIdx]).trim());
 const norm = t => t.toLowerCase().replace(/[^a-z0-9()&-]+/g,' ').trim();
 function makeDefs(){
   const n = head.map(norm);
@@ -140,7 +153,7 @@ function cellText(v){
   return String(v).trim();
 }
 
-function load(table, isSample){
+function load(table, isSample, restoring){
   table = table.filter(r => r.some(c => cellText(c) !== ''));
   if (table.length < 2){ $('status').textContent = 'Data me header aur kam se kam ek row chahiye.'; return; }
   let hr = table.findIndex(r => r.some(c => /^branch$/i.test(cellText(c))));
@@ -148,11 +161,14 @@ function load(table, isSample){
   head = table[hr].map(cellText);
   rows = table.slice(hr+1).map(r => head.map((_,i) => cellText(r[i]).replace(/^#N\/A$/,'')));
   defs = makeDefs();
+  desigIdx = head.findIndex(h => /designation/i.test(h));
   let di = head.findIndex(h => /^date$/i.test(h));
   if (di < 0) di = head.findIndex(h => /date/i.test(h) && !/time|stop|start/i.test(h));
   rowDates = di >= 0 ? rows.map(r => parseDate(r[di])) : [];
   const dates = [...new Set(rowDates.filter(Boolean))].sort();
-  $('date').value = !dates.length || dates.includes(defaultDate) ? defaultDate : dates[dates.length-1];
+  const keep = store.get('selDate');
+  $('date').value = !isSample && restoring && keep && dates.includes(keep) ? keep : (!dates.length || dates.includes(defaultDate) ? defaultDate : dates[dates.length-1]);
+  if (!isSample && !restoring){ store.set('data', table); store.set('savedAt', Date.now()); }
   usingSample = isSample;
   const bsel = $('branchCol');
   bsel.innerHTML = '';
@@ -163,7 +179,7 @@ function load(table, isSample){
   if (bi < 0) bi = head.findIndex(h => /branch|region|location/i.test(h));
   bsel.value = bi < 0 ? 0 : bi;
   buildCols();
-  $('status').textContent = isSample ? 'Abhi sample data dikh raha hai. Apna data upload karte hi reports update ho jayengi.' : rows.length+' rows load hui.';
+  $('status').textContent = isSample ? 'Abhi sample data dikh raha hai. Apna data upload karte hi reports update ho jayengi.' : rows.length+' rows load hui. Data is phone/computer me save hai, refresh karne par bhi rahega.';
   render();
 }
 
@@ -190,54 +206,51 @@ function statusColor(v){
   return null;
 }
 
-function draw(branch, list, cols){
-  const S = 2, pad = 16, rowH = 34, font = '15px "Red Hat Text", Arial, sans-serif', bold = '600 15px "Red Hat Text", Arial, sans-serif';
+function draw(branch, list, cols, bm){
+  const S = 2, pad = 12, rowH = 30, F = 'Calibri, Carlito, Arial, sans-serif';
+  const font = '14px '+F, bold = 'bold 14px '+F;
   const c = document.createElement('canvas'), x = c.getContext('2d');
-  const hdr = ['#', ...cols.map(k => defs[k].label)];
+  const lab = k => bm && defs[k].label === 'Name of SO' ? 'Name of BM' : defs[k].label;
+  const hdr = ['S.No', ...cols.map(lab)];
   const cell = (k,v) => SUM.includes(defs[k].label) && v !== '' && !isNaN(String(v).replace(/,/g,'')) ? fmtNum(+String(v).replace(/,/g,'')) : v;
   const data = list.map((r,n) => [String(n+1), ...cols.map(k => cell(k, r[defs[k].idx]))]);
-  const tot = ['', ...cols.map((k,j) => j === 0 ? 'Total' : SUM.includes(defs[k].label) ? fmtNum(list.reduce((a,r) => a + (parseFloat(String(r[defs[k].idx]).replace(/,/g,'')) || 0), 0)) : '')];
-  const hasTot = cols.some(k => SUM.includes(defs[k].label));
-  if (hasTot) data.push(tot);
-  x.font = bold;
-  const w = hdr.map((h,j) => Math.max(x.measureText(h).width, ...data.map(r => { x.font = font; const m = x.measureText(r[j]).width; x.font = bold; return m; })) + 24);
-  const title = fmtDate($('date').value)+'  '+branch;
-  x.font = '700 22px "Red Hat Display", Arial, sans-serif';
-  const W = Math.max(w.reduce((a,b) => a+b, 0) + pad*2, x.measureText(title).width + pad*2 + 120);
-  const scale = (W - pad*2) / w.reduce((a,b) => a+b, 0);
-  const cw = w.map(v => v*scale);
-  const titleH = 58, H = titleH + rowH*(data.length+1) + pad + 26;
+  const hasTot = !bm && cols.some(k => SUM.includes(defs[k].label));
+  if (hasTot) data.push(['', ...cols.map((k,j) => j === 0 ? 'Total' : SUM.includes(defs[k].label) ? fmtNum(list.reduce((a,r) => a + (parseFloat(String(r[defs[k].idx]).replace(/,/g,'')) || 0), 0)) : '')]);
+  const meas = (t,f) => { x.font = f; return x.measureText(t).width; };
+  const w = hdr.map((h,j) => Math.max(meas(h,bold), ...data.map(r => meas(r[j], bold))) + 22);
+  const title = fmtDate($('date').value)+'  '+branch+(bm ? '  (BM)' : '');
+  const tw = w.reduce((a,b) => a+b, 0), minW = meas(title, 'bold 20px '+F) + 40;
+  const cw = tw < minW ? w.map(v => v*minW/tw) : w;
+  const TW = Math.max(tw, minW), W = TW + pad*2;
+  const titleH = 40, H = pad + titleH + rowH*(data.length+1) + pad;
   c.width = W*S; c.height = H*S; x.scale(S,S);
   x.fillStyle = '#fff'; x.fillRect(0,0,W,H);
-  x.fillStyle = '#0b1f4b'; x.fillRect(0,0,W,titleH);
-  x.fillStyle = '#fff'; x.font = '700 22px "Red Hat Display", Arial, sans-serif'; x.textBaseline = 'middle';
-  x.fillText(title, pad, titleH/2);
-  x.font = font; x.textAlign = 'right'; x.fillStyle = '#c5cde3';
-  x.fillText(list.length+' SO', W-pad, titleH/2); x.textAlign = 'left';
-  let y = titleH + 8;
-  const rowsAll = [hdr, ...data];
-  rowsAll.forEach((r, ri) => {
-    const isTot = hasTot && ri === rowsAll.length-1;
-    if (ri === 0){ x.fillStyle = '#f2ec1f'; x.fillRect(pad, y, W-pad*2, rowH); }
-    else if (isTot){ x.fillStyle = '#e4e9f4'; x.fillRect(pad, y, W-pad*2, rowH); }
-    else if (ri % 2 === 0){ x.fillStyle = '#f6f8fc'; x.fillRect(pad, y, W-pad*2, rowH); }
+  x.textBaseline = 'middle'; x.textAlign = 'center';
+  let y = pad;
+  x.fillStyle = '#c6e0b4'; x.fillRect(pad, y, TW, titleH);
+  x.fillStyle = '#000'; x.font = 'bold 20px '+F; x.fillText(title, pad + TW/2, y + titleH/2);
+  y += titleH;
+  const top = pad;
+  [hdr, ...data].forEach((r, ri) => {
+    const isTot = hasTot && ri === data.length;
+    x.fillStyle = ri === 0 ? '#ffff00' : isTot ? '#d9e1f2' : '#fff';
+    x.fillRect(pad, y, TW, rowH);
     let cx = pad;
     r.forEach((v, j) => {
       x.font = ri === 0 || isTot ? bold : font;
-      x.fillStyle = ri === 0 ? '#0b1f4b' : (statusColor(v) || '#1c2540');
-      if (ri && statusColor(v)) x.font = bold;
-      x.fillText(v, cx + 12, y + rowH/2);
+      x.fillStyle = '#000';
+      x.fillText(v, cx + cw[j]/2, y + rowH/2 + 1);
       cx += cw[j];
     });
-    x.strokeStyle = '#d5dbe8'; x.lineWidth = 1;
-    x.beginPath(); x.moveTo(pad, y+rowH+.5); x.lineTo(W-pad, y+rowH+.5); x.stroke();
     y += rowH;
   });
+  x.strokeStyle = '#000'; x.lineWidth = 1;
+  x.beginPath();
+  for (let yy = top; yy <= y + .1; yy += (yy < top + titleH ? titleH : rowH)) { x.moveTo(pad, Math.round(yy)+.5); x.lineTo(pad+TW, Math.round(yy)+.5); }
   let cx = pad;
-  x.beginPath(); cw.slice(0,-1).forEach(v => { cx += v; x.moveTo(cx+.5, titleH+8); x.lineTo(cx+.5, y); }); x.stroke();
-  x.strokeRect(pad+.5, titleH+8.5, W-pad*2-1, y-titleH-8);
-  x.font = '12px "Red Hat Text", Arial, sans-serif'; x.fillStyle = '#7a849c';
-  x.fillText('Hosper daily SO report', pad, y + 18);
+  [0, ...cw].forEach(v => { cx += v; x.moveTo(Math.round(cx)+.5, top+titleH); x.lineTo(Math.round(cx)+.5, y); });
+  x.moveTo(pad+.5, top); x.lineTo(pad+.5, top+titleH); x.moveTo(pad+TW-.5, top); x.lineTo(pad+TW-.5, top+titleH);
+  x.stroke();
   return c;
 }
 
@@ -258,18 +271,21 @@ function render(){
     $('status').textContent = fmtDate(sel)+' ki '+dayRows.length+' rows dikh rahi hain. File me ye dates hain: '+dates.join(', ')+'.';
   }
   if (!dayRows.length){ const p = document.createElement('p'); p.className = 'empty'; p.textContent = fmtDate(sel)+' ka data is file me nahi hai. Upar date badlo ya sahi file chuno.'; grid.appendChild(p); return; }
-  const groups = new Map();
-  dayRows.forEach(r => { const b = (r[bi] || 'No branch').toUpperCase(); if (!groups.has(b)) groups.set(b, []); groups.get(b).push(r); });
   const ord = b => { const i = BRANCHES.indexOf(b); return i < 0 ? 99 : i; };
+  [[false, 'SO report'], [true, 'BM report']].forEach(([bm, heading]) => {
+  const groups = new Map();
+  dayRows.filter(r => isBM(r) === bm).forEach(r => { const b = (r[bi] || 'No branch').toUpperCase(); if (!groups.has(b)) groups.set(b, []); groups.get(b).push(r); });
+  if (!groups.size) return;
+  const h2 = document.createElement('h2'); h2.className = 'sec'; h2.textContent = heading; grid.appendChild(h2);
   [...groups.keys()].sort((a,c) => ord(a)-ord(c) || a.localeCompare(c)).forEach(b => {
-    const canvas = draw(b, groups.get(b), cols);
+    const canvas = draw(b, groups.get(b), cols, bm);
     const card = document.createElement('div'); card.className = 'card';
     const img = document.createElement('img'); img.src = canvas.toDataURL('image/png'); img.alt = 'Report '+b;
     const bar = document.createElement('div'); bar.className = 'bar';
-    const name = document.createElement('b'); name.textContent = b+' ('+groups.get(b).length+')';
+    const name = document.createElement('b'); name.textContent = b+(bm ? ' BM' : '')+' ('+groups.get(b).length+')';
     const msg = document.createElement('div'); msg.className = 'msg';
     const say = (t, k) => { msg.textContent = t; msg.className = 'msg '+(k||''); };
-    const fname = (fmtDate($('date').value)+' '+b).replace(/[^\w-]+/g,'_')+'.png';
+    const fname = (fmtDate($('date').value)+' '+b+(bm ? ' BM' : '')).replace(/[^\w-]+/g,'_')+'.png';
     const copy = document.createElement('button'); copy.className = 'primary'; copy.textContent = 'Copy';
     copy.addEventListener('click', async () => {
       try {
@@ -301,6 +317,7 @@ function render(){
     bar.append(name, copy, share, dl);
     card.append(img, bar, msg);
     grid.appendChild(card);
+  });
   });
 }
 
@@ -336,8 +353,18 @@ $('usePaste').addEventListener('click', () => {
 });
 $('sample').addEventListener('click', () => load(SAMPLE, true));
 $('branchCol').addEventListener('change', () => { store.set('branchCol', head[+$('branchCol').value]); buildCols(); render(); });
-$('date').addEventListener('change', render);
-(document.fonts ? document.fonts.ready : Promise.resolve()).then(() => load(SAMPLE, true));
+$('date').addEventListener('change', () => { store.set('selDate', $('date').value); render(); });
+(document.fonts ? document.fonts.ready : Promise.resolve()).then(() => {
+  const saved = store.get('data');
+  if (saved && saved.length > 1) load(saved, false, true); else load(SAMPLE, true);
+  if (saved && saved.length > 1){ const t = store.get('savedAt'); $('status').textContent += t ? ' (Pichhli upload: '+new Date(t).toLocaleString('en-IN', {dateStyle:'medium', timeStyle:'short'})+')' : ''; }
+});
+let deferred = null;
+window.addEventListener('beforeinstallprompt', e => { e.preventDefault(); deferred = e; $('install').style.display = 'inline-flex'; });
+$('install').addEventListener('click', async () => { if (!deferred) return; deferred.prompt(); await deferred.userChoice; deferred = null; $('install').style.display = 'none'; });
+const standalone = matchMedia('(display-mode: standalone)').matches || navigator.standalone;
+if (/iphone|ipad|ipod/i.test(navigator.userAgent) && !standalone) $('iosHint').hidden = false;
+if ('serviceWorker' in navigator && location.protocol === 'https:') navigator.serviceWorker.register('sw.js').catch(() => {});
 }
 </script>
 </body>
