@@ -147,7 +147,7 @@ function parseDate(v, md){
   if (m = v.match(/^(\d{4})[-\/.](\d{1,2})[-\/.](\d{1,2})/)) return ymd(m[1], +m[2], +m[3]);
   if (m = v.match(/^(\d{1,2})[-\/. ]+([A-Za-z]{3,9})[-\/., ]+(\d{2,4})/)) return ymd(m[3], mon(m[2]), +m[1]);
   if (m = v.match(/^([A-Za-z]{3,9})[-\/. ]+(\d{1,2}),?[-\/. ]+(\d{2,4})/)) return ymd(m[3], mon(m[1]), +m[2]);
-  if (m = v.match(/^(\d{1,2})[-\/.](\d{1,2})[-\/.](\d{2,4})/)) { const a = +m[1], b = +m[2]; return b > 12 || (md && a <= 12) ? ymd(m[3], a, b) : ymd(m[3], b, a); }
+  if (m = v.match(/^(\d{1,2})[-\/.](\d{1,2})[-\/.](\d{2,4})/)) { const a = +m[1], b = +m[2]; return b > 12 || (md && a <= 12 && v.includes("/")) ? ymd(m[3], a, b) : ymd(m[3], b, a); }
   return null;
 }
 const dateCol = h => { let i = h.findIndex(x => /^date$/i.test(x)); if (i < 0) i = h.findIndex(x => /date/i.test(x) && !/time|stop|start/i.test(x)); return i; };
@@ -309,7 +309,7 @@ async function refresh(keepDate){
   if (!sheetUrl) { sheetDays = null; dates = []; $('last').textContent = 'Google Sheet link nahi laga hai.'; $('up').open = true; cur = want; $('date').value = want; drawDays(); empty('Neeche Settings me Google Sheet ka link daalo aur Save dabao.'); return; }
   try { dates = await loadSheet(); }
   catch (e) { sheetDays = null; dates = []; drawDays(); $('last').textContent = 'Google Sheet se data nahi aaya.'; $('up').open = true; empty('Google Sheet nahi khul rahi. Sheet me Share dabao, "General access" me "Anyone with the link" (Viewer) chuno, phir yahan Refresh dabao.'); return; }
-  $('last').textContent = 'Google Sheet se data aaya: '+when(Date.now())+'. Sheet me naya data daalke Refresh dabao.';
+  $('last').textContent = 'Google Sheet se data aaya: '+when(Date.now())+'. Sheet me naya data daalke Refresh dabao.'+(sheetWarn ? ' Dhyan do: '+sheetWarn : '');
   showDate(want);
 }
 
@@ -320,21 +320,27 @@ function buildDays(table){
   const h = table[hr] || [];
   const body = table.slice(hr+1).filter(r => !r.some(c => /^branch$/i.test(c))).map(r => h.map((_,i) => r[i] ?? ''));
   const di = dateCol(h), days = {};
+  let skipped = 0;
   let md = false;
   if (di >= 0) {
-    const nums = body.map(r => String(r[di]).match(/^(\d{1,2})[-\/.](\d{1,2})[-\/.]\d{2,4}/)).filter(Boolean);
+    const nums = body.map(r => String(r[di]).match(/^(\d{1,2})\/(\d{1,2})\/\d{2,4}/)).filter(Boolean);
     md = !nums.some(m => +m[1] > 12) && nums.some(m => +m[2] > 12);
   }
-  body.forEach(r => { const d = di >= 0 ? parseDate(r[di], md) : null; if (!d) return; (days[d] = days[d] || {d, head: h, rows: []}).rows.push(r); });
-  return {days, count: body.length};
+  body.forEach(r => { const d = di >= 0 ? parseDate(r[di], md) : null; if (!d) { skipped++; return; } (days[d] = days[d] || {d, head: h, rows: []}).rows.push(r); });
+  return {days, count: body.length, skipped};
 }
 
 function csvUrl(orig){
   const u = String(orig || '').trim(), g = (u.match(/[?&#]gid=(\d+)/) || [])[1];
   let m;
   if (/\/spreadsheets\/d\/e\//.test(u)) { let b = u.replace(/[?#].*$/, '').replace(/\/(pubhtml|pub)$/, ''); return b+'/pub?output=csv'+(g ? '&gid='+g+'&single=true' : ''); }
-  if (m = u.match(/\/spreadsheets\/d\/([\w-]+)/)) { return 'https://docs.google.com/spreadsheets/d/'+m[1]+'/gviz/tq?tqx=out:csv'+(g ? '&gid='+g : ''); }
+  if (m = u.match(/\/spreadsheets\/d\/([\w-]+)/)) return 'https://docs.google.com/spreadsheets/d/'+m[1]+'/export?format=csv&gid='+(g || '0');
   return null;
+}
+// Fallback for normal links: gviz reads public sheets from any site, but may blank out cells whose type differs from the rest of the column.
+function gvizUrl(orig){
+  const u = String(orig || ''), g = (u.match(/[?&#]gid=(\d+)/) || [])[1], m = u.match(/\/spreadsheets\/d\/([\w-]+)/);
+  return m && m[1] !== 'e' ? 'https://docs.google.com/spreadsheets/d/'+m[1]+'/gviz/tq?tqx=out:csv&headers=1'+(g ? '&gid='+g : '') : null;
 }
 function parseCSV(t){
   const out = []; let row = [], f = '', q = false;
@@ -349,14 +355,23 @@ function parseCSV(t){
   if (f !== '' || row.length) { row.push(f); out.push(row); }
   return out;
 }
-async function loadSheet(){
-  const u = csvUrl(sheetUrl);
-  if (!u) throw new Error('bad link');
+async function getCsv(u){
   const r = await fetch(u + (u.includes('?') ? '&' : '?') + '_=' + Date.now(), {cache:'no-store'});
   if (!r.ok) throw new Error('HTTP '+r.status);
   const text = await r.text();
   if (/^\s*</.test(text)) throw new Error('not csv');
-  const {days} = buildDays(parseCSV(text));
+  return text;
+}
+let sheetWarn = '';
+async function loadSheet(){
+  const u = csvUrl(sheetUrl);
+  if (!u) throw new Error('bad link');
+  let text, viaGviz = false;
+  try { text = await getCsv(u); }
+  catch (e) { const g = gvizUrl(sheetUrl); if (!g) throw e; text = await getCsv(g); viaGviz = true; }
+  const table = parseCSV(text);
+  const {days, skipped} = buildDays(table);
+  sheetWarn = skipped ? skipped+' rows ki Date padh nahi paye'+(viaGviz ? ' (Google ne kuch dates khaali bheji). Sheet ka Date column poora "Plain text" format me karo: column select karo, Format, Number, Plain text.' : '.') : '';
   sheetDays = days;
   return Object.keys(days).sort().reverse().map(d => ({d, n: days[d].rows.length, u: new Date().toISOString()}));
 }
