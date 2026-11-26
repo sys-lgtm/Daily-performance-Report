@@ -95,13 +95,13 @@ const SUM = ['TC','PC','Total Secondary','Secondary (Modular)'];
 const BRANCHES = ['UP EAST','UP WEST','WEST BENGAL','BIHAR','JHARKHAND','RAJASTHAN','DELHI','HARYANA','CHHATISGRAH','J&K'];
 const SAMPLE = [
   ['Zone','Branch','State','Reporting Manager','Date','SO Name','Employee Code','Designation','TC','PC','Visit Value Secondary','Secondary (Modular) Value','Phone Order Count Sec','Phone Order Value Sec','Total Secondary Value','Shop Face Time','N C TC','N C PC','N C Value','Attendance Time','First Check-in Time','KM','Working Period KM','Last Check-out Time','Attendance Stop Time','Total Working Time','Travel Time'],
-  ['North','UP EAST','UP','R. Mishra','26-11-2026','Rahul Verma','H101','SO','18','7','24500','6200','2','3100','27600','04:12','3','1','2100','09:31','10:02','64','58','18:21','18:40','08:19','02:05'],
-  ['North','UP EAST','UP','R. Mishra','26-11-2026','Amit Singh','H102','SO','15','5','18200','0','0','0','18200','03:40','2','0','0','10:20','10:48','52','49','18:05','18:15','07:17','01:50'],
-  ['North','UP EAST','UP','R. Mishra','26-11-2026','Vikas Gupta','H104','SO','21','9','31000','8800','1','1500','32500','05:02','4','2','4300','09:22','09:55','71','66','18:30','18:45','08:35','02:20'],
-  ['North','UP WEST','UP','S. Tyagi','26-11-2026','Sandeep Kumar','H201','SO','16','6','20500','4100','0','0','20500','03:55','1','1','1200','09:40','10:10','48','45','18:00','18:10','07:50','01:40'],
-  ['North','UP WEST','UP','S. Tyagi','26-11-2026','Neha Sharma','H202','ASM','12','4','15800','0','1','900','16700','03:10','2','0','0','09:35','10:05','39','36','17:50','18:00','07:45','01:30'],
-  ['East','BIHAR','Bihar','K. Jha','26-11-2026','Manoj Jha','H301','SO','19','8','26300','5400','0','0','26300','04:30','3','2','3800','09:45','10:15','58','54','18:25','18:35','08:10','02:00'],
-  ['East','BIHAR','Bihar','K. Jha','26-11-2026','Ravi Ranjan','H302','SO','11','3','9800','0','0','0','9800','02:45','1','0','0','11:00','11:25','41','38','18:30','18:40','07:05','01:55']
+  ['North','UP EAST','UP','R. Mishra','25-11-2026','Rahul Verma','H101','SO','18','7','24500','6200','2','3100','27600','04:12','3','1','2100','09:31','10:02','64','58','18:21','18:40','08:19','02:05'],
+  ['North','UP EAST','UP','R. Mishra','25-11-2026','Amit Singh','H102','SO','15','5','18200','0','0','0','18200','03:40','2','0','0','10:20','10:48','52','49','18:05','18:15','07:17','01:50'],
+  ['North','UP EAST','UP','R. Mishra','25-11-2026','Vikas Gupta','H104','SO','21','9','31000','8800','1','1500','32500','05:02','4','2','4300','09:22','09:55','71','66','18:30','18:45','08:35','02:20'],
+  ['North','UP WEST','UP','S. Tyagi','25-11-2026','Sandeep Kumar','H201','SO','16','6','20500','4100','0','0','20500','03:55','1','1','1200','09:40','10:10','48','45','18:00','18:10','07:50','01:40'],
+  ['North','UP WEST','UP','S. Tyagi','25-11-2026','Neha Sharma','H202','ASM','12','4','15800','0','1','900','16700','03:10','2','0','0','09:35','10:05','39','36','17:50','18:00','07:45','01:30'],
+  ['East','BIHAR','Bihar','K. Jha','25-11-2026','Manoj Jha','H301','SO','19','8','26300','5400','0','0','26300','04:30','3','2','3800','09:45','10:15','58','54','18:25','18:35','08:10','02:00'],
+  ['East','BIHAR','Bihar','K. Jha','25-11-2026','Ravi Ranjan','H302','SO','11','3','9800','0','0','0','9800','02:45','1','0','0','11:00','11:25','41','38','18:30','18:40','07:05','01:55']
 ];
 let head = [], rows = [], defs = [], usingSample = true;
 const norm = t => t.toLowerCase().replace(/[^a-z0-9()&-]+/g,' ').trim();
@@ -123,7 +123,9 @@ function parseDate(v){
 const store = {get(k){try{return JSON.parse(localStorage.getItem(k))}catch(e){return null}},set(k,v){try{localStorage.setItem(k,JSON.stringify(v))}catch(e){}}};
 
 const today = new Date();
-$('date').value = today.toISOString().slice(0,10);
+const yday = new Date(today.getFullYear(), today.getMonth(), today.getDate() - 1);
+$('date').value = yday.getFullYear()+'-'+String(yday.getMonth()+1).padStart(2,'0')+'-'+String(yday.getDate()).padStart(2,'0');
+const defaultDate = $('date').value;
 const fmtDate = v => { const [y,m,d] = v.split('-'); return d+'-'+MON[+m-1]+'-'+y.slice(2); };
 
 function cellText(v){
@@ -142,7 +144,7 @@ function load(table, isSample){
   defs = makeDefs();
   const di = head.findIndex(h => /^date$/i.test(h));
   const dv = di >= 0 && rows.find(r => r[di]) ? parseDate(rows.find(r => r[di])[di]) : null;
-  if (dv) $('date').value = dv;
+  $('date').value = dv || defaultDate;
   usingSample = isSample;
   const bsel = $('branchCol');
   bsel.innerHTML = '';
