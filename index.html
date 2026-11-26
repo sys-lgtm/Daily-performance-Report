@@ -322,7 +322,7 @@ async function refresh(keepDate){
     $('sheet').value = sheetUrl || '';
     if (sheetUrl) {
       try { dates = await loadSheet(); }
-      catch (e) { sheetDays = null; $('last').textContent = 'Google Sheet nahi padh paye. Sheet ka "Publish to web" (CSV) link check karo.'; $('up').open = true; empty('Google Sheet se data nahi aaya.'); return; }
+      catch (e) { sheetDays = null; $('last').textContent = 'Google Sheet se data nahi aaya.'; $('up').open = true; empty('Google Sheet nahi khul rahi. Sheet me Share dabao, "General access" me "Anyone with the link" (Viewer) chuno, phir yahan Refresh dabao.'); return; }
       if (!dates.length) { $('last').textContent = 'Google Sheet khaali hai.'; empty('Sheet me data paste karo, phir Refresh dabao.'); return; }
       $('last').textContent = 'Google Sheet se data aaya: '+when(Date.now())+'. Sheet me naya data daalke Refresh dabao.';
       const has = d => dates.some(x => x.d === d);
