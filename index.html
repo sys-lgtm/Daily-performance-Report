@@ -93,6 +93,11 @@ details summary{cursor:pointer;font-weight:600;min-height:32px}
       <label class="btn primary">CRM Excel upload karo<input type="file" id="file" accept=".xlsx,.xls,.csv"></label>
       <button id="install">Phone me install karo</button>
     </div>
+    <div class="row">
+      <label class="f" style="flex:1 1 320px">Google Sheet link (isse upload ki zarurat nahi padegi)<input id="sheet" type="url" placeholder="https://docs.google.com/spreadsheets/d/e/.../pub?output=csv" style="font:16px 'Red Hat Text',sans-serif;color:var(--ink);background:var(--bg);border:1px solid var(--line);border-radius:10px;padding:10px 12px;min-height:44px;width:100%"></label>
+      <button id="saveSheet">Sheet link save karo</button>
+    </div>
+    <p class="note">Sheet me: File, phir Share, phir "Publish to web". Wahan "Comma-separated values (.csv)" chuno, Publish dabao, aur jo link mile wo yahan daalo. Uske baad bas sheet me neeche data paste karo aur app me Refresh dabao (Google ko update hone me 2-5 minute lag sakte hain).</p>
     <p class="note" id="upmsg">Excel me jitne din ka data hoga, sab din alag alag save ho jayenge. Phone app me refresh karte hi dikh jayega.</p>
     <details>
       <summary>Ya Google Sheet se copy karke paste karo</summary>
@@ -131,7 +136,7 @@ const SB = 'https://idldwilrbhkacucraxpk.supabase.co/rest/v1/rpc/', SBKEY = 'sb_
 const store = {get(k){try{return JSON.parse(localStorage.getItem(k))}catch(e){return null}},set(k,v){try{localStorage.setItem(k,JSON.stringify(v))}catch(e){}}};
 const rpc = (fn, body) => fetch(SB+fn, {method:'POST', cache:'no-store', headers:{apikey:SBKEY, 'Content-Type':'application/json'}, body: JSON.stringify(body||{})}).then(r => { if (!r.ok) throw new Error('HTTP '+r.status); return r.json(); });
 
-let head = [], rows = [], defs = [], desigIdx = -1, dates = [], cur = null;
+let head = [], rows = [], defs = [], desigIdx = -1, dates = [], cur = null, sheetDays = null, sheetUrl = null;
 const norm = t => String(t).toLowerCase().replace(/[^a-z0-9()&-]+/g,' ').trim();
 const iso = d => d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');
 const fmtDate = v => { const [y,m,d] = v.split('-'); return d+'-'+MON[+m-1]+'-'+y.slice(2); };
@@ -141,7 +146,7 @@ const toBlob = c => new Promise(r => c.toBlob(r, 'image/png'));
 const t0 = new Date(), YDAY = iso(new Date(t0.getFullYear(), t0.getMonth(), t0.getDate() - 1));
 const isBM = r => desigIdx >= 0 && /^(bm|branch manager)$/i.test(String(r[desigIdx]).trim());
 
-function parseDate(v){
+function parseDate(v, md){
   v = String(v || '').trim();
   if (!v) return null;
   const ymd = (y,m,d) => { y = String(y).length === 2 ? '20'+y : String(y); if (!(m >= 1 && m <= 12 && d >= 1 && d <= 31)) return null; return y+'-'+String(m).padStart(2,'0')+'-'+String(d).padStart(2,'0'); };
@@ -151,7 +156,7 @@ function parseDate(v){
   if (m = v.match(/^(\d{4})[-\/.](\d{1,2})[-\/.](\d{1,2})/)) return ymd(m[1], +m[2], +m[3]);
   if (m = v.match(/^(\d{1,2})[-\/. ]+([A-Za-z]{3,9})[-\/., ]+(\d{2,4})/)) return ymd(m[3], mon(m[2]), +m[1]);
   if (m = v.match(/^([A-Za-z]{3,9})[-\/. ]+(\d{1,2}),?[-\/. ]+(\d{2,4})/)) return ymd(m[3], mon(m[1]), +m[2]);
-  if (m = v.match(/^(\d{1,2})[-\/.](\d{1,2})[-\/.](\d{2,4})/)) { const a = +m[1], b = +m[2]; return b > 12 ? ymd(m[3], a, b) : ymd(m[3], b, a); }
+  if (m = v.match(/^(\d{1,2})[-\/.](\d{1,2})[-\/.](\d{2,4})/)) { const a = +m[1], b = +m[2]; return b > 12 || (md && a <= 12) ? ymd(m[3], a, b) : ymd(m[3], b, a); }
   return null;
 }
 const dateCol = h => { let i = h.findIndex(x => /^date$/i.test(x)); if (i < 0) i = h.findIndex(x => /date/i.test(x) && !/time|stop|start/i.test(x)); return i; };
@@ -299,6 +304,7 @@ function drawDays(){
 
 async function showDate(d){
   cur = d; $('date').value = d; store.set('selDate', d); drawDays();
+  if (sheetDays) { useDay(sheetDays[d] || null); return; }
   const cache = store.get('day:'+d);
   if (cache) useDay(cache); else empty('Data la rahe hain...');
   try {
@@ -312,6 +318,18 @@ async function showDate(d){
 async function refresh(keepDate){
   $('last').textContent = 'Latest data la rahe hain...';
   try {
+    try { sheetUrl = await rpc('dpr_get_sheet'); store.set('sheetUrl', sheetUrl); } catch (e) { sheetUrl = store.get('sheetUrl'); }
+    $('sheet').value = sheetUrl || '';
+    if (sheetUrl) {
+      try { dates = await loadSheet(); }
+      catch (e) { sheetDays = null; $('last').textContent = 'Google Sheet nahi padh paye. Sheet ka "Publish to web" (CSV) link check karo.'; $('up').open = true; empty('Google Sheet se data nahi aaya.'); return; }
+      if (!dates.length) { $('last').textContent = 'Google Sheet khaali hai.'; empty('Sheet me data paste karo, phir Refresh dabao.'); return; }
+      $('last').textContent = 'Google Sheet se data aaya: '+when(Date.now())+'. Sheet me naya data daalke Refresh dabao.';
+      const has = d => dates.some(x => x.d === d);
+      await showDate(keepDate && cur && has(cur) ? cur : has(YDAY) ? YDAY : dates[0].d);
+      return;
+    }
+    sheetDays = null;
     dates = await rpc('dpr_dates');
     store.set('dates', dates);
     if (!dates.length) { $('last').textContent = 'Abhi tak koi data upload nahi hua. Computer se Excel upload karo.'; cur = YDAY; $('date').value = cur; drawDays(); empty('Neeche "Data upload" kholo aur CRM ki Excel upload karo.'); $('up').open = true; return; }
@@ -328,25 +346,68 @@ async function refresh(keepDate){
   }
 }
 
-async function upload(table){
-  const msg = t => { $('upmsg').textContent = t; };
+function buildDays(table){
   table = table.map(r => r.map(cellText)).filter(r => r.some(c => c !== ''));
   let hr = table.findIndex(r => r.some(c => /^branch$/i.test(c)));
   if (hr < 0) hr = 0;
-  const h = table[hr], body = table.slice(hr+1).map(r => h.map((_,i) => r[i] ?? ''));
-  if (!body.length) { msg('File me data nahi mila.'); return; }
+  const h = table[hr] || [];
+  const body = table.slice(hr+1).filter(r => !r.some(c => /^branch$/i.test(c))).map(r => h.map((_,i) => r[i] ?? ''));
   const di = dateCol(h), days = {};
-  body.forEach(r => { const d = (di >= 0 && parseDate(r[di])) || $('date').value || YDAY; (days[d] = days[d] || {head: h, rows: []}).rows.push(r); });
+  let md = false;
+  if (di >= 0) {
+    const nums = body.map(r => String(r[di]).match(/^(\d{1,2})[-\/.](\d{1,2})[-\/.]\d{2,4}/)).filter(Boolean);
+    md = !nums.some(m => +m[1] > 12) && nums.some(m => +m[2] > 12);
+  }
+  body.forEach(r => { const d = (di >= 0 && parseDate(r[di], md)) || $('date').value || YDAY; (days[d] = days[d] || {d, head: h, rows: []}).rows.push(r); });
+  return {days, count: body.length};
+}
+
+async function upload(table){
+  const msg = t => { $('upmsg').textContent = t; };
+  const {days, count} = buildDays(table);
+  if (!count) { msg('File me data nahi mila.'); return; }
   const ks = Object.keys(days).sort();
   msg('Upload ho raha hai...');
   try {
     const r = await rpc('dpr_upload', {p_days: days});
     if (!r.ok) { msg(r.error === 'too_large' ? 'File bahut badi hai.' : r.error === 'too_many_days' ? 'Ek baar me 62 din se zyada data mat daalo.' : 'Upload nahi hua.'); return; }
     ks.forEach(k => store.set('day:'+k, null));
-    msg('Upload ho gaya: '+ks.map(fmtDate).join(', ')+' ('+body.length+' rows). Phone app me Refresh dabao.');
+    msg('Upload ho gaya: '+ks.map(fmtDate).join(', ')+' ('+count+' rows). Phone app me Refresh dabao.'+(sheetUrl ? ' Dhyan do: Google Sheet link laga hai, isliye app Sheet ka data hi dikhayega.' : ''));
     cur = ks.includes(YDAY) ? YDAY : ks[ks.length-1];
     await refresh(true);
   } catch (e) { msg('Internet ki dikkat se upload nahi hua. Dobara try karo.'); }
+}
+
+function csvUrl(orig){
+  const u = String(orig || '').trim(), g = (u.match(/[?&#]gid=(\d+)/) || [])[1];
+  let m;
+  if (/\/spreadsheets\/d\/e\//.test(u)) { let b = u.replace(/[?#].*$/, '').replace(/\/(pubhtml|pub)$/, ''); return b+'/pub?output=csv'+(g ? '&gid='+g+'&single=true' : ''); }
+  if (m = u.match(/\/spreadsheets\/d\/([\w-]+)/)) { return 'https://docs.google.com/spreadsheets/d/'+m[1]+'/gviz/tq?tqx=out:csv'+(g ? '&gid='+g : ''); }
+  return null;
+}
+function parseCSV(t){
+  const out = []; let row = [], f = '', q = false;
+  for (let i = 0; i < t.length; i++) {
+    const c = t[i];
+    if (q) { if (c === '"') { if (t[i+1] === '"') { f += '"'; i++; } else q = false; } else f += c; }
+    else if (c === '"') q = true;
+    else if (c === ',') { row.push(f); f = ''; }
+    else if (c === '\n' || c === '\r') { if (c === '\r' && t[i+1] === '\n') i++; row.push(f); out.push(row); row = []; f = ''; }
+    else f += c;
+  }
+  if (f !== '' || row.length) { row.push(f); out.push(row); }
+  return out;
+}
+async function loadSheet(){
+  const u = csvUrl(sheetUrl);
+  if (!u) throw new Error('bad link');
+  const r = await fetch(u + (u.includes('?') ? '&' : '?') + '_=' + Date.now(), {cache:'no-store'});
+  if (!r.ok) throw new Error('HTTP '+r.status);
+  const text = await r.text();
+  if (/^\s*</.test(text)) throw new Error('not csv');
+  const {days} = buildDays(parseCSV(text));
+  sheetDays = days;
+  return Object.keys(days).sort().reverse().map(d => ({d, n: days[d].rows.length, u: new Date().toISOString()}));
 }
 
 $('file').addEventListener('change', async e => {
@@ -377,6 +438,16 @@ $('usePaste').addEventListener('click', () => {
   const t = $('paste').value.trim(); if (!t) return;
   const sep = t.includes('\t') ? '\t' : ',';
   upload(t.split(/\r?\n/).map(l => l.split(sep)));
+});
+$('saveSheet').addEventListener('click', async () => {
+  const v = $('sheet').value.trim();
+  if (v && !csvUrl(v)) { $('upmsg').textContent = 'Ye Google Sheet ka link nahi lag raha.'; return; }
+  try {
+    const r = await rpc('dpr_set_sheet', {p_url: v});
+    if (!r.ok) { $('upmsg').textContent = 'Ye Google Sheet ka link nahi lag raha.'; return; }
+    $('upmsg').textContent = v ? 'Sheet link save ho gaya. Ab sabke app me data isi Sheet se aayega.' : 'Sheet link hata diya. Ab uploaded data dikhega.';
+    refresh(true);
+  } catch (e) { $('upmsg').textContent = 'Internet ki dikkat se save nahi hua.'; }
 });
 $('branchCol').addEventListener('change', () => { store.set('branchCol', head[+$('branchCol').value]); setupControls(); render(); });
 $('date').addEventListener('change', () => { if ($('date').value) showDate($('date').value); });
