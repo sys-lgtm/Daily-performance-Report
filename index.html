@@ -1,0 +1,308 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Branch Attendance Reports</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Red+Hat+Display:wght@700&family=Red+Hat+Text:wght@400;600&display=swap" rel="stylesheet">
+<style>
+/* VOICE: a working office tool, calm and fast, nothing decorative
+   IDEA: a stack of printed branch slips ready to hand out
+   PICTURE: the generated report images themselves, one card per branch
+   COLOUR and TYPE: oxford blue band, white cards, magenta for actions; Red Hat Display + Text
+   LAYOUT: controls band on top, grid of branch cards below, single column on phones */
+:root{color-scheme:light dark;--bg:light-dark(#eef1f7,#070f26);--card:light-dark(#fff,#0f1d42);--ink:light-dark(#0b1f4b,#e8ecf6);--mute:light-dark(#53607e,#9aa6c4);--line:light-dark(#d5dbe8,#24345f);--blue:#0b1f4b;--acc:#e0115f}
+:root[data-theme=light]{color-scheme:light}:root[data-theme=dark]{color-scheme:dark}
+*{box-sizing:border-box;min-width:0}
+body{margin:0;background:var(--bg);color:var(--ink);font:16px/1.55 "Red Hat Text",system-ui,sans-serif;overflow-x:clip}
+header{background:var(--blue);color:#fff;padding:22px max(5vw,16px) 18px}
+h1{font:700 clamp(26px,4vw,38px)/1.05 "Red Hat Display",sans-serif;margin:0 0 4px;text-wrap:balance}
+header p{margin:0;color:#c5cde3;font-size:15px}
+.band{padding:20px max(5vw,16px)}
+.panel{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:18px;display:grid;gap:14px;max-width:1240px;margin:0 auto}
+.row{display:flex;flex-wrap:wrap;gap:12px;align-items:end}
+label.f{display:grid;gap:4px;font-size:14px;font-weight:600;color:var(--mute)}
+input[type=date],select,textarea{font:16px "Red Hat Text",sans-serif;color:var(--ink);background:var(--bg);border:1px solid var(--line);border-radius:10px;padding:10px 12px;min-height:44px}
+textarea{width:100%;min-height:90px;resize:vertical}
+button,.btn{font:600 15px "Red Hat Text",sans-serif;min-height:44px;padding:0 16px;border-radius:10px;border:1px solid var(--line);background:var(--bg);color:var(--ink);cursor:pointer;display:inline-flex;align-items:center;gap:6px}
+button.primary,.btn.primary{background:var(--acc);border-color:var(--acc);color:#fff}
+button:focus-visible,.btn:focus-within,select:focus-visible,input:focus-visible,textarea:focus-visible{outline:3px solid var(--acc);outline-offset:2px}
+.btn input{display:none}
+.cols{display:flex;flex-wrap:wrap;gap:8px}
+.cols label{display:inline-flex;gap:6px;align-items:center;font-size:14px;padding:6px 10px;border:1px solid var(--line);border-radius:999px;background:var(--bg);cursor:pointer}
+.cols input{width:18px;height:18px;accent-color:var(--acc)}
+.note{font-size:13px;color:var(--mute);margin:0}
+.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(min(100%,600px),1fr));gap:18px;max-width:1240px;margin:0 auto}
+.card{background:var(--card);border:1px solid var(--line);border-radius:14px;overflow:hidden;display:flex;flex-direction:column}
+.card img{width:100%;height:auto;display:block;background:#fff;border-bottom:1px solid var(--line)}
+.bar{display:flex;flex-wrap:wrap;gap:8px;padding:12px;align-items:center}
+.bar b{flex:1 1 120px;font-size:15px}
+.msg{font-size:13px;padding:0 12px 10px;color:var(--mute);min-height:1em}
+.msg.ok{color:#118a4e}.msg.err{color:var(--acc)}
+.empty{text-align:center;color:var(--mute);padding:40px 0}
+details summary{cursor:pointer;font-weight:600;min-height:32px}
+</style>
+</head>
+<body>
+<header>
+  <h1>Branch-wise attendance reports</h1>
+  <p>Data daalo, har branch ki report image ban jayegi. Copy dabao aur WhatsApp group me paste karo.</p>
+</header>
+
+<section class="band">
+  <div class="panel">
+    <div class="row">
+      <label class="f">Report date<input type="date" id="date"></label>
+      <label class="btn primary">Excel / CSV file chuno<input type="file" id="file" accept=".xlsx,.xls,.csv"></label>
+      <button id="sample">Sample data dekho</button>
+      <label class="f">Branch column<select id="branchCol"></select></label>
+    </div>
+    <details>
+      <summary>Ya Google Sheet se copy karke yahan paste karo</summary>
+      <textarea id="paste" placeholder="Sheet me header ke saath poora data select karo, Ctrl+C, phir yahan Ctrl+V"></textarea>
+      <button id="usePaste">Paste kiya data use karo</button>
+    </details>
+    <div>
+      <p class="note" style="margin-bottom:6px">Report me kaun se columns dikhane hain (aapki choice yaad rahegi):</p>
+      <div class="cols" id="cols"></div>
+    </div>
+    <p class="note" id="status">Abhi sample data dikh raha hai. Apna data upload karte hi reports update ho jayengi.</p>
+  </div>
+</section>
+
+<section class="band" style="padding-top:0">
+  <div class="grid" id="grid"></div>
+</section>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<script>
+{
+const $ = id => document.getElementById(id);
+const MON = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+const PRESET = [
+  ['Name of SO', ['so name','name of so','sales officer']],
+  ['TC', ['tc']],
+  ['PC', ['pc']],
+  ['Total Secondary', ['total secondary value','total secondary']],
+  ['Secondary (Modular)', ['secondary (modular) value','secondary modular value','secondary (modular)']],
+  ['First Check-in', ['first check-in time','first checkin time','first check-in']],
+  ['Last Check-out', ['last check-out time','last checkout time','last check-out']],
+  ['Shop Face Time', ['shop face time']],
+  ['Working Time', ['total working time','working time']]
+];
+const SUM = ['TC','PC','Total Secondary','Secondary (Modular)'];
+const BRANCHES = ['UP EAST','UP WEST','WEST BENGAL','BIHAR','JHARKHAND','RAJASTHAN','DELHI','HARYANA','CHHATISGRAH','J&K'];
+const SAMPLE = [
+  ['Zone','Branch','State','Reporting Manager','Date','SO Name','Employee Code','Designation','TC','PC','Visit Value Secondary','Secondary (Modular) Value','Phone Order Count Sec','Phone Order Value Sec','Total Secondary Value','Shop Face Time','N C TC','N C PC','N C Value','Attendance Time','First Check-in Time','KM','Working Period KM','Last Check-out Time','Attendance Stop Time','Total Working Time','Travel Time'],
+  ['North','UP EAST','UP','R. Mishra','26-11-2026','Rahul Verma','H101','SO','18','7','24500','6200','2','3100','27600','04:12','3','1','2100','09:31','10:02','64','58','18:21','18:40','08:19','02:05'],
+  ['North','UP EAST','UP','R. Mishra','26-11-2026','Amit Singh','H102','SO','15','5','18200','0','0','0','18200','03:40','2','0','0','10:20','10:48','52','49','18:05','18:15','07:17','01:50'],
+  ['North','UP EAST','UP','R. Mishra','26-11-2026','Vikas Gupta','H104','SO','21','9','31000','8800','1','1500','32500','05:02','4','2','4300','09:22','09:55','71','66','18:30','18:45','08:35','02:20'],
+  ['North','UP WEST','UP','S. Tyagi','26-11-2026','Sandeep Kumar','H201','SO','16','6','20500','4100','0','0','20500','03:55','1','1','1200','09:40','10:10','48','45','18:00','18:10','07:50','01:40'],
+  ['North','UP WEST','UP','S. Tyagi','26-11-2026','Neha Sharma','H202','ASM','12','4','15800','0','1','900','16700','03:10','2','0','0','09:35','10:05','39','36','17:50','18:00','07:45','01:30'],
+  ['East','BIHAR','Bihar','K. Jha','26-11-2026','Manoj Jha','H301','SO','19','8','26300','5400','0','0','26300','04:30','3','2','3800','09:45','10:15','58','54','18:25','18:35','08:10','02:00'],
+  ['East','BIHAR','Bihar','K. Jha','26-11-2026','Ravi Ranjan','H302','SO','11','3','9800','0','0','0','9800','02:45','1','0','0','11:00','11:25','41','38','18:30','18:40','07:05','01:55']
+];
+let head = [], rows = [], defs = [], usingSample = true;
+const norm = t => t.toLowerCase().replace(/[^a-z0-9()&-]+/g,' ').trim();
+function makeDefs(){
+  const n = head.map(norm);
+  const found = PRESET.map(([label, al]) => ({label, idx: n.findIndex(h => al.includes(h))})).filter(d => d.idx >= 0);
+  return found.length >= 3 ? found : head.map((h,i) => ({label: h || ('Column '+(i+1)), idx: i}));
+}
+function parseDate(v){
+  let m = v.match(/^(\d{4})-(\d{1,2})-(\d{1,2})/);
+  if (m) return m[1]+'-'+m[2].padStart(2,'0')+'-'+m[3].padStart(2,'0');
+  m = v.match(/^(\d{1,2})[-\/. ]([A-Za-z]{3}|\d{1,2})[-\/. ](\d{2,4})/);
+  if (!m) return null;
+  const mo = isNaN(m[2]) ? MON.findIndex(x => x.toLowerCase() === m[2].toLowerCase().slice(0,3)) + 1 : +m[2];
+  if (!mo || mo > 12) return null;
+  const y = m[3].length === 2 ? '20'+m[3] : m[3];
+  return y+'-'+String(mo).padStart(2,'0')+'-'+m[1].padStart(2,'0');
+}
+const store = {get(k){try{return JSON.parse(localStorage.getItem(k))}catch(e){return null}},set(k,v){try{localStorage.setItem(k,JSON.stringify(v))}catch(e){}}};
+
+const today = new Date();
+$('date').value = today.toISOString().slice(0,10);
+const fmtDate = v => { const [y,m,d] = v.split('-'); return d+'-'+MON[+m-1]+'-'+y.slice(2); };
+
+function cellText(v){
+  if (v == null) return '';
+  if (v instanceof Date) return String(v.getHours()).padStart(2,'0')+':'+String(v.getMinutes()).padStart(2,'0');
+  return String(v).trim();
+}
+
+function load(table, isSample){
+  table = table.filter(r => r.some(c => cellText(c) !== ''));
+  if (table.length < 2){ $('status').textContent = 'Data me header aur kam se kam ek row chahiye.'; return; }
+  let hr = table.findIndex(r => r.some(c => /^branch$/i.test(cellText(c))));
+  if (hr < 0) hr = 0;
+  head = table[hr].map(cellText);
+  rows = table.slice(hr+1).map(r => head.map((_,i) => cellText(r[i]).replace(/^#N\/A$/,'')));
+  defs = makeDefs();
+  const di = head.findIndex(h => /^date$/i.test(h));
+  const dv = di >= 0 && rows.find(r => r[di]) ? parseDate(rows.find(r => r[di])[di]) : null;
+  if (dv) $('date').value = dv;
+  usingSample = isSample;
+  const bsel = $('branchCol');
+  bsel.innerHTML = '';
+  head.forEach((h,i) => { const o = document.createElement('option'); o.value = i; o.textContent = h || ('Column '+(i+1)); bsel.appendChild(o); });
+  const saved = store.get('branchCol');
+  let bi = head.indexOf(saved);
+  if (bi < 0) bi = head.findIndex(h => /^branch$/i.test(h));
+  if (bi < 0) bi = head.findIndex(h => /branch|region|location/i.test(h));
+  bsel.value = bi < 0 ? 0 : bi;
+  buildCols();
+  $('status').textContent = isSample ? 'Abhi sample data dikh raha hai. Apna data upload karte hi reports update ho jayengi.' : rows.length+' rows load hui.';
+  render();
+}
+
+function buildCols(){
+  const saved = store.get('cols2');
+  const bi = +$('branchCol').value;
+  const box = $('cols'); box.innerHTML = '';
+  defs.forEach((d,k) => {
+    if (d.idx === bi) return;
+    const l = document.createElement('label');
+    const c = document.createElement('input'); c.type = 'checkbox'; c.value = k;
+    c.checked = saved ? saved.includes(d.label) : true;
+    c.addEventListener('change', () => { store.set('cols2', selCols().map(j => defs[j].label)); render(); });
+    l.append(c, document.createTextNode(d.label));
+    box.appendChild(l);
+  });
+}
+const selCols = () => [...document.querySelectorAll('#cols input:checked')].map(c => +c.value);
+
+function statusColor(v){
+  if (/^(a|absent)$/i.test(v)) return '#c4123f';
+  if (/^(late|half ?day|hd)$/i.test(v)) return '#b86a00';
+  if (/^(p|present)$/i.test(v)) return '#118a4e';
+  return null;
+}
+
+function draw(branch, list, cols){
+  const S = 2, pad = 16, rowH = 34, font = '15px "Red Hat Text", Arial, sans-serif', bold = '600 15px "Red Hat Text", Arial, sans-serif';
+  const c = document.createElement('canvas'), x = c.getContext('2d');
+  const hdr = ['#', ...cols.map(k => defs[k].label)];
+  const cell = (k,v) => SUM.includes(defs[k].label) && v !== '' && !isNaN(String(v).replace(/,/g,'')) ? fmtNum(+String(v).replace(/,/g,'')) : v;
+  const data = list.map((r,n) => [String(n+1), ...cols.map(k => cell(k, r[defs[k].idx]))]);
+  const tot = ['', ...cols.map((k,j) => j === 0 ? 'Total' : SUM.includes(defs[k].label) ? fmtNum(list.reduce((a,r) => a + (parseFloat(String(r[defs[k].idx]).replace(/,/g,'')) || 0), 0)) : '')];
+  const hasTot = cols.some(k => SUM.includes(defs[k].label));
+  if (hasTot) data.push(tot);
+  x.font = bold;
+  const w = hdr.map((h,j) => Math.max(x.measureText(h).width, ...data.map(r => { x.font = font; const m = x.measureText(r[j]).width; x.font = bold; return m; })) + 24);
+  const title = fmtDate($('date').value)+'  '+branch;
+  x.font = '700 22px "Red Hat Display", Arial, sans-serif';
+  const W = Math.max(w.reduce((a,b) => a+b, 0) + pad*2, x.measureText(title).width + pad*2 + 120);
+  const scale = (W - pad*2) / w.reduce((a,b) => a+b, 0);
+  const cw = w.map(v => v*scale);
+  const titleH = 58, H = titleH + rowH*(data.length+1) + pad + 26;
+  c.width = W*S; c.height = H*S; x.scale(S,S);
+  x.fillStyle = '#fff'; x.fillRect(0,0,W,H);
+  x.fillStyle = '#0b1f4b'; x.fillRect(0,0,W,titleH);
+  x.fillStyle = '#fff'; x.font = '700 22px "Red Hat Display", Arial, sans-serif'; x.textBaseline = 'middle';
+  x.fillText(title, pad, titleH/2);
+  x.font = font; x.textAlign = 'right'; x.fillStyle = '#c5cde3';
+  x.fillText(list.length+' SO', W-pad, titleH/2); x.textAlign = 'left';
+  let y = titleH + 8;
+  const rowsAll = [hdr, ...data];
+  rowsAll.forEach((r, ri) => {
+    const isTot = hasTot && ri === rowsAll.length-1;
+    if (ri === 0){ x.fillStyle = '#f2ec1f'; x.fillRect(pad, y, W-pad*2, rowH); }
+    else if (isTot){ x.fillStyle = '#e4e9f4'; x.fillRect(pad, y, W-pad*2, rowH); }
+    else if (ri % 2 === 0){ x.fillStyle = '#f6f8fc'; x.fillRect(pad, y, W-pad*2, rowH); }
+    let cx = pad;
+    r.forEach((v, j) => {
+      x.font = ri === 0 || isTot ? bold : font;
+      x.fillStyle = ri === 0 ? '#0b1f4b' : (statusColor(v) || '#1c2540');
+      if (ri && statusColor(v)) x.font = bold;
+      x.fillText(v, cx + 12, y + rowH/2);
+      cx += cw[j];
+    });
+    x.strokeStyle = '#d5dbe8'; x.lineWidth = 1;
+    x.beginPath(); x.moveTo(pad, y+rowH+.5); x.lineTo(W-pad, y+rowH+.5); x.stroke();
+    y += rowH;
+  });
+  let cx = pad;
+  x.beginPath(); cw.slice(0,-1).forEach(v => { cx += v; x.moveTo(cx+.5, titleH+8); x.lineTo(cx+.5, y); }); x.stroke();
+  x.strokeRect(pad+.5, titleH+8.5, W-pad*2-1, y-titleH-8);
+  x.font = '12px "Red Hat Text", Arial, sans-serif'; x.fillStyle = '#7a849c';
+  x.fillText('Hosper daily SO report', pad, y + 18);
+  return c;
+}
+
+const fmtNum = n => Math.round(n).toLocaleString('en-IN');
+const toBlob = c => new Promise(r => c.toBlob(r, 'image/png'));
+
+function render(){
+  const grid = $('grid'); grid.innerHTML = '';
+  const bi = +$('branchCol').value, cols = selCols();
+  if (!rows.length){ grid.innerHTML = '<p class="empty">Data load karo.</p>'; return; }
+  const groups = new Map();
+  rows.forEach(r => { const b = (r[bi] || 'No branch').toUpperCase(); if (!groups.has(b)) groups.set(b, []); groups.get(b).push(r); });
+  const ord = b => { const i = BRANCHES.indexOf(b); return i < 0 ? 99 : i; };
+  [...groups.keys()].sort((a,c) => ord(a)-ord(c) || a.localeCompare(c)).forEach(b => {
+    const canvas = draw(b, groups.get(b), cols);
+    const card = document.createElement('div'); card.className = 'card';
+    const img = document.createElement('img'); img.src = canvas.toDataURL('image/png'); img.alt = 'Report '+b;
+    const bar = document.createElement('div'); bar.className = 'bar';
+    const name = document.createElement('b'); name.textContent = b+' ('+groups.get(b).length+')';
+    const msg = document.createElement('div'); msg.className = 'msg';
+    const say = (t, k) => { msg.textContent = t; msg.className = 'msg '+(k||''); };
+    const fname = (fmtDate($('date').value)+' '+b).replace(/[^\w-]+/g,'_')+'.png';
+    const copy = document.createElement('button'); copy.className = 'primary'; copy.textContent = 'Copy';
+    copy.addEventListener('click', async () => {
+      try {
+        if (!window.ClipboardItem || !navigator.clipboard?.write) throw new Error('no');
+        await navigator.clipboard.write([new ClipboardItem({'image/png': toBlob(canvas)})]);
+        say('Copy ho gaya. Ab WhatsApp group me paste karo.', 'ok');
+      } catch (e) {
+        say('Is browser me image copy nahi hui. Share dabao, ya image par long-press karke Copy chuno.', 'err');
+      }
+    });
+    const share = document.createElement('button'); share.textContent = 'Share';
+    share.addEventListener('click', async () => {
+      try {
+        const file = new File([await toBlob(canvas)], fname, {type:'image/png'});
+        if (!navigator.canShare?.({files:[file]})) throw new Error('no');
+        await navigator.share({files:[file], title: b});
+      } catch (e) {
+        if (e.name !== 'AbortError') say('Share yahan available nahi hai. Download try karo.', 'err');
+      }
+    });
+    const dl = document.createElement('button'); dl.textContent = 'Download';
+    dl.addEventListener('click', async () => {
+      try {
+        const d = window.claude ? await window.claude.use('downloads') : null;
+        if (d) { await d.save({filename: fname, data: await toBlob(canvas)}); return; }
+      } catch (e) { say('Download nahi hua. Image par long-press karke save karo.', 'err'); return; }
+      const a = document.createElement('a'); a.href = img.src; a.download = fname; document.body.appendChild(a); a.click(); a.remove();
+    });
+    bar.append(name, copy, share, dl);
+    card.append(img, bar, msg);
+    grid.appendChild(card);
+  });
+}
+
+$('file').addEventListener('change', async e => {
+  const f = e.target.files[0]; if (!f) return;
+  try {
+    const wb = XLSX.read(await f.arrayBuffer(), {cellDates:true});
+    const ws = wb.Sheets[wb.SheetNames[0]];
+    load(XLSX.utils.sheet_to_json(ws, {header:1, raw:false, defval:''}), false);
+  } catch (err) { $('status').textContent = 'File padh nahi paye. Excel (.xlsx) ya CSV file chuniye.'; }
+  e.target.value = '';
+});
+$('usePaste').addEventListener('click', () => {
+  const t = $('paste').value.trim(); if (!t) return;
+  const sep = t.includes('\t') ? '\t' : ',';
+  load(t.split(/\r?\n/).map(l => l.split(sep)), false);
+});
+$('sample').addEventListener('click', () => load(SAMPLE, true));
+$('branchCol').addEventListener('change', () => { store.set('branchCol', head[+$('branchCol').value]); buildCols(); render(); });
+$('date').addEventListener('change', render);
+(document.fonts ? document.fonts.ready : Promise.resolve()).then(() => load(SAMPLE, true));
+}
+</script>
+</body>
+</html>
