@@ -88,22 +88,14 @@ details summary{cursor:pointer;font-weight:600;min-height:32px}
 
 <section class="band" style="padding-top:0">
   <details class="panel" id="up">
-    <summary>Data upload aur settings (computer se)</summary>
+    <summary>Settings (Google Sheet link, columns)</summary>
     <div class="row">
-      <label class="btn primary">CRM Excel upload karo<input type="file" id="file" accept=".xlsx,.xls,.csv"></label>
-      <button id="install">Phone me install karo</button>
-    </div>
-    <div class="row">
-      <label class="f" style="flex:1 1 320px">Google Sheet link (isse upload ki zarurat nahi padegi)<input id="sheet" type="url" placeholder="https://docs.google.com/spreadsheets/d/e/.../pub?output=csv" style="font:16px 'Red Hat Text',sans-serif;color:var(--ink);background:var(--bg);border:1px solid var(--line);border-radius:10px;padding:10px 12px;min-height:44px;width:100%"></label>
+      <label class="f" style="flex:1 1 320px">Google Sheet link<input id="sheet" type="url" placeholder="https://docs.google.com/spreadsheets/d/..." style="font:16px 'Red Hat Text',sans-serif;color:var(--ink);background:var(--bg);border:1px solid var(--line);border-radius:10px;padding:10px 12px;min-height:44px;width:100%"></label>
       <button id="saveSheet">Sheet link save karo</button>
     </div>
-    <p class="note">Sheet me: File, phir Share, phir "Publish to web". Wahan "Comma-separated values (.csv)" chuno, Publish dabao, aur jo link mile wo yahan daalo. Uske baad bas sheet me neeche data paste karo aur app me Refresh dabao (Google ko update hone me 2-5 minute lag sakte hain).</p>
-    <p class="note" id="upmsg">Excel me jitne din ka data hoga, sab din alag alag save ho jayenge. Phone app me refresh karte hi dikh jayega.</p>
-    <details>
-      <summary>Ya Google Sheet se copy karke paste karo</summary>
-      <textarea id="paste" placeholder="Sheet me header ke saath poora data select karo, Ctrl+C, phir yahan Ctrl+V"></textarea>
-      <button id="usePaste">Paste kiya data upload karo</button>
-    </details>
+    <p class="note">Sheet ka Share "Anyone with the link" (Viewer) hona chahiye. Roz CRM ka data sheet me neeche paste karo aur app me Refresh dabao.</p>
+    <p class="note" id="upmsg"></p>
+    <div class="row"><button id="install">Phone me install karo</button></div>
     <label class="f">Branch column<select id="branchCol"></select></label>
     <div>
       <p class="note" style="margin-bottom:6px">Report me kaun se columns dikhane hain (is phone/computer par yaad rahega):</p>
@@ -113,7 +105,6 @@ details summary{cursor:pointer;font-weight:600;min-height:32px}
   </details>
 </section>
 
-<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <script>
 {
 const $ = id => document.getElementById(id);
@@ -302,48 +293,24 @@ function drawDays(){
   });
 }
 
-async function showDate(d){
+function showDate(d){
   cur = d; $('date').value = d; store.set('selDate', d); drawDays();
-  if (sheetDays) { useDay(sheetDays[d] || null); return; }
-  const cache = store.get('day:'+d);
-  if (cache) useDay(cache); else empty('Data la rahe hain...');
-  try {
-    const day = await rpc('dpr_day', {p_date: d});
-    if (cur !== d) return;
-    if (day) { try { store.set('day:'+d, day); } catch (e) {} }
-    useDay(day);
-  } catch (e) { if (!cache) empty('Internet nahi hai. Net on karke Refresh dabao.'); }
+  const day = sheetDays && sheetDays[d];
+  if (day) { useDay(day); return; }
+  head = []; rows = [];
+  empty(fmtDate(d)+' ka data Google Sheet me nahi hai.'+(dates.length ? ' Sheet me sabse latest date: '+fmtDate(dates[0].d)+'. Upar us date par tap karke dekh sakte ho.' : ''));
 }
 
 async function refresh(keepDate){
-  $('last').textContent = 'Latest data la rahe hain...';
-  try {
-    try { sheetUrl = await rpc('dpr_get_sheet'); store.set('sheetUrl', sheetUrl); } catch (e) { sheetUrl = store.get('sheetUrl'); }
-    $('sheet').value = sheetUrl || '';
-    if (sheetUrl) {
-      try { dates = await loadSheet(); }
-      catch (e) { sheetDays = null; $('last').textContent = 'Google Sheet se data nahi aaya.'; $('up').open = true; empty('Google Sheet nahi khul rahi. Sheet me Share dabao, "General access" me "Anyone with the link" (Viewer) chuno, phir yahan Refresh dabao.'); return; }
-      if (!dates.length) { $('last').textContent = 'Google Sheet khaali hai.'; empty('Sheet me data paste karo, phir Refresh dabao.'); return; }
-      $('last').textContent = 'Google Sheet se data aaya: '+when(Date.now())+'. Sheet me naya data daalke Refresh dabao.';
-      const has = d => dates.some(x => x.d === d);
-      await showDate(keepDate && cur && has(cur) ? cur : has(YDAY) ? YDAY : dates[0].d);
-      return;
-    }
-    sheetDays = null;
-    dates = await rpc('dpr_dates');
-    store.set('dates', dates);
-    if (!dates.length) { $('last').textContent = 'Abhi tak koi data upload nahi hua. Computer se Excel upload karo.'; cur = YDAY; $('date').value = cur; drawDays(); empty('Neeche "Data upload" kholo aur CRM ki Excel upload karo.'); $('up').open = true; return; }
-    const newest = dates.reduce((a,b) => a.u > b.u ? a : b);
-    $('last').textContent = 'Last upload: '+when(newest.u)+'. Refresh karne par naya data aa jata hai.';
-    const has = d => dates.some(x => x.d === d);
-    const want = keepDate && cur && has(cur) ? cur : has(YDAY) ? YDAY : dates[0].d;
-    await showDate(want);
-  } catch (e) {
-    dates = store.get('dates') || [];
-    $('last').textContent = 'Internet nahi mila. Pichhla saved data dikh raha hai.';
-    const d = store.get('selDate') || YDAY; cur = d; $('date').value = d; drawDays();
-    useDay(store.get('day:'+d));
-  }
+  $('last').textContent = 'Google Sheet se data la rahe hain...';
+  try { sheetUrl = await rpc('dpr_get_sheet'); store.set('sheetUrl', sheetUrl); } catch (e) { sheetUrl = store.get('sheetUrl'); }
+  $('sheet').value = sheetUrl || '';
+  const want = keepDate && cur ? cur : YDAY;
+  if (!sheetUrl) { sheetDays = null; dates = []; $('last').textContent = 'Google Sheet link nahi laga hai.'; $('up').open = true; cur = want; $('date').value = want; drawDays(); empty('Neeche Settings me Google Sheet ka link daalo aur Save dabao.'); return; }
+  try { dates = await loadSheet(); }
+  catch (e) { sheetDays = null; dates = []; drawDays(); $('last').textContent = 'Google Sheet se data nahi aaya.'; $('up').open = true; empty('Google Sheet nahi khul rahi. Sheet me Share dabao, "General access" me "Anyone with the link" (Viewer) chuno, phir yahan Refresh dabao.'); return; }
+  $('last').textContent = 'Google Sheet se data aaya: '+when(Date.now())+'. Sheet me naya data daalke Refresh dabao.';
+  showDate(want);
 }
 
 function buildDays(table){
@@ -358,24 +325,8 @@ function buildDays(table){
     const nums = body.map(r => String(r[di]).match(/^(\d{1,2})[-\/.](\d{1,2})[-\/.]\d{2,4}/)).filter(Boolean);
     md = !nums.some(m => +m[1] > 12) && nums.some(m => +m[2] > 12);
   }
-  body.forEach(r => { const d = (di >= 0 && parseDate(r[di], md)) || $('date').value || YDAY; (days[d] = days[d] || {d, head: h, rows: []}).rows.push(r); });
+  body.forEach(r => { const d = di >= 0 ? parseDate(r[di], md) : null; if (!d) return; (days[d] = days[d] || {d, head: h, rows: []}).rows.push(r); });
   return {days, count: body.length};
-}
-
-async function upload(table){
-  const msg = t => { $('upmsg').textContent = t; };
-  const {days, count} = buildDays(table);
-  if (!count) { msg('File me data nahi mila.'); return; }
-  const ks = Object.keys(days).sort();
-  msg('Upload ho raha hai...');
-  try {
-    const r = await rpc('dpr_upload', {p_days: days});
-    if (!r.ok) { msg(r.error === 'too_large' ? 'File bahut badi hai.' : r.error === 'too_many_days' ? 'Ek baar me 62 din se zyada data mat daalo.' : 'Upload nahi hua.'); return; }
-    ks.forEach(k => store.set('day:'+k, null));
-    msg('Upload ho gaya: '+ks.map(fmtDate).join(', ')+' ('+count+' rows). Phone app me Refresh dabao.'+(sheetUrl ? ' Dhyan do: Google Sheet link laga hai, isliye app Sheet ka data hi dikhayega.' : ''));
-    cur = ks.includes(YDAY) ? YDAY : ks[ks.length-1];
-    await refresh(true);
-  } catch (e) { msg('Internet ki dikkat se upload nahi hua. Dobara try karo.'); }
 }
 
 function csvUrl(orig){
@@ -410,42 +361,13 @@ async function loadSheet(){
   return Object.keys(days).sort().reverse().map(d => ({d, n: days[d].rows.length, u: new Date().toISOString()}));
 }
 
-$('file').addEventListener('change', async e => {
-  const f = e.target.files[0]; if (!f) return;
-  try {
-    const wb = XLSX.read(await f.arrayBuffer(), {cellNF:true});
-    const ws = wb.Sheets[wb.SheetNames[0]];
-    const R = XLSX.utils.decode_range(ws['!ref']);
-    let dc = -1;
-    for (let r = R.s.r; r <= Math.min(R.e.r, R.s.r+20) && dc < 0; r++) {
-      const hs = [];
-      for (let c = R.s.c; c <= R.e.c; c++) { const x = ws[XLSX.utils.encode_cell({r,c})]; hs.push(x ? String(x.v).trim() : ''); }
-      if (!hs.some(h => /^branch$/i.test(h))) continue;
-      dc = dateCol(hs);
-      if (dc >= 0) dc += R.s.c;
-    }
-    if (dc >= 0) for (let r = R.s.r; r <= R.e.r; r++) {
-      const c = ws[XLSX.utils.encode_cell({r, c: dc})];
-      if (!c || c.t !== 'n' || c.v < 1) continue;
-      const d = new Date(Date.UTC(1899,11,30) + Math.floor(c.v)*86400000);
-      c.w = d.getUTCFullYear()+'-'+String(d.getUTCMonth()+1).padStart(2,'0')+'-'+String(d.getUTCDate()).padStart(2,'0');
-    }
-    await upload(XLSX.utils.sheet_to_json(ws, {header:1, raw:false, defval:''}));
-  } catch (err) { $('upmsg').textContent = 'File padh nahi paye. Excel (.xlsx) ya CSV file chuniye.'; }
-  e.target.value = '';
-});
-$('usePaste').addEventListener('click', () => {
-  const t = $('paste').value.trim(); if (!t) return;
-  const sep = t.includes('\t') ? '\t' : ',';
-  upload(t.split(/\r?\n/).map(l => l.split(sep)));
-});
 $('saveSheet').addEventListener('click', async () => {
   const v = $('sheet').value.trim();
   if (v && !csvUrl(v)) { $('upmsg').textContent = 'Ye Google Sheet ka link nahi lag raha.'; return; }
   try {
     const r = await rpc('dpr_set_sheet', {p_url: v});
     if (!r.ok) { $('upmsg').textContent = 'Ye Google Sheet ka link nahi lag raha.'; return; }
-    $('upmsg').textContent = v ? 'Sheet link save ho gaya. Ab sabke app me data isi Sheet se aayega.' : 'Sheet link hata diya. Ab uploaded data dikhega.';
+    $('upmsg').textContent = v ? 'Sheet link save ho gaya. Ab sabke app me data isi Sheet se aayega.' : 'Sheet link hata diya.';
     refresh(true);
   } catch (e) { $('upmsg').textContent = 'Internet ki dikkat se save nahi hua.'; }
 });
