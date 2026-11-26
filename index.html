@@ -67,6 +67,11 @@ details summary{cursor:pointer;font-weight:600;min-height:32px}
       <button id="install">Phone me install karo</button>
       <label class="f">Branch column<select id="branchCol"></select></label>
     </div>
+    <div class="row">
+      <label class="f">Team PIN<input type="password" inputmode="numeric" id="pin" autocomplete="off" placeholder="6 digit PIN" style="font:16px 'Red Hat Text',sans-serif;color:var(--ink);background:var(--bg);border:1px solid var(--line);border-radius:10px;padding:10px 12px;min-height:44px;width:150px"></label>
+      <button id="pull">Latest data lao</button>
+      <p class="note" id="sync" style="flex:1 1 220px">PIN daalne par aapka upload sabke liye save hoga, aur sabko wahi latest data dikhega.</p>
+    </div>
     <details>
       <summary>Ya Google Sheet se copy karke yahan paste karo</summary>
       <textarea id="paste" placeholder="Sheet me header ke saath poora data select karo, Ctrl+C, phir yahan Ctrl+V"></textarea>
@@ -168,7 +173,7 @@ function load(table, isSample, restoring){
   const dates = [...new Set(rowDates.filter(Boolean))].sort();
   const keep = store.get('selDate');
   $('date').value = !isSample && restoring && keep && dates.includes(keep) ? keep : (!dates.length || dates.includes(defaultDate) ? defaultDate : dates[dates.length-1]);
-  if (!isSample && !restoring){ store.set('data', table); store.set('savedAt', Date.now()); }
+  if (!isSample && !restoring){ store.set('data', table); store.set('savedAt', Date.now()); pushShared(table); }
   usingSample = isSample;
   const bsel = $('branchCol');
   bsel.innerHTML = '';
@@ -354,7 +359,40 @@ $('usePaste').addEventListener('click', () => {
 $('sample').addEventListener('click', () => load(SAMPLE, true));
 $('branchCol').addEventListener('change', () => { store.set('branchCol', head[+$('branchCol').value]); buildCols(); render(); });
 $('date').addEventListener('change', () => { store.set('selDate', $('date').value); render(); });
+const SB = 'https://idldwilrbhkacucraxpk.supabase.co/rest/v1/rpc/', SBKEY = 'sb_publishable_6YcEmSu6ETpQduRMj0UALQ_UYI8OIC8';
+const rpc = (fn, body) => fetch(SB+fn, {method:'POST', headers:{apikey:SBKEY, 'Content-Type':'application/json'}, body: JSON.stringify(body)}).then(r => { if (!r.ok) throw new Error(r.status); return r.json(); });
+const sync = t => { $('sync').textContent = t; };
+const when = t => new Date(t).toLocaleString('en-IN', {dateStyle:'medium', timeStyle:'short'});
+$('pin').value = store.get('pin') || '';
+$('pin').addEventListener('change', () => { store.set('pin', $('pin').value.trim()); pullShared(true); });
+async function pushShared(table){
+  const pin = $('pin').value.trim(); if (!pin) { sync('Data sirf is device me save hua. Sabke liye save karne ko Team PIN daalo.'); return; }
+  sync('Sabke liye save ho raha hai...');
+  try {
+    const r = await rpc('dpr_save', {p_pin: pin, p_payload: {table}});
+    if (!r.ok) { sync(r.error === 'too_large' ? 'File bahut badi hai, sabke liye save nahi hui.' : 'PIN galat hai. Data sirf is device me save hua.'); return; }
+    store.set('savedAt', Date.parse(r.updated_at) || Date.now());
+    sync('Sabke liye save ho gaya ('+when(r.updated_at)+'). Jo bhi link kholega, use yahi data dikhega.');
+  } catch (e) { sync('Internet ki dikkat se sabke liye save nahi hua. Dobara upload karo.'); }
+}
+async function pullShared(force){
+  const pin = $('pin').value.trim(); if (!pin) { if (force) sync('Pehle Team PIN daalo.'); return; }
+  sync('Latest data la rahe hain...');
+  try {
+    const r = await rpc('dpr_get', {p_pin: pin});
+    if (!r.ok) { sync('PIN galat hai.'); return; }
+    if (!r.payload || !r.payload.table) { sync('Abhi tak kisi ne data upload nahi kiya.'); return; }
+    const t = Date.parse(r.updated_at);
+    if (force || !store.get('savedAt') || t > store.get('savedAt')) {
+      store.set('data', r.payload.table); store.set('savedAt', t);
+      load(r.payload.table, false, true);
+    }
+    sync('Latest data: '+when(r.updated_at)+' ka upload.');
+  } catch (e) { sync('Internet ki dikkat se latest data nahi aaya. Purana saved data dikh raha hai.'); }
+}
+$('pull').addEventListener('click', () => pullShared(true));
 (document.fonts ? document.fonts.ready : Promise.resolve()).then(() => {
+  pullShared(false);
   const saved = store.get('data');
   if (saved && saved.length > 1) load(saved, false, true); else load(SAMPLE, true);
   if (saved && saved.length > 1){ const t = store.get('savedAt'); $('status').textContent += t ? ' (Pichhli upload: '+new Date(t).toLocaleString('en-IN', {dateStyle:'medium', timeStyle:'short'})+')' : ''; }
