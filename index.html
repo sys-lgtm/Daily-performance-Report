@@ -9,6 +9,7 @@
 <link rel="icon" href="icon-192.png">
 <link rel="apple-touch-icon" href="icon-192.png">
 <meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-title" content="Daily Report">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Red+Hat+Display:wght@700&family=Red+Hat+Text:wght@400;600&display=swap" rel="stylesheet">
@@ -48,46 +49,63 @@ button:focus-visible,.btn:focus-within,select:focus-visible,input:focus-visible,
 .msg.ok{color:#118a4e}.msg.err{color:var(--acc)}
 h2.sec{font:700 22px/1.2 "Red Hat Display",sans-serif;margin:8px auto 0;max-width:1240px;grid-column:1/-1}
 #install{display:none}
+.top{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap}
+.top button{background:#fff;color:#0b1f4b;border-color:#fff}
+.datebar{position:sticky;top:0;z-index:5;background:var(--bg);padding:12px max(5vw,16px);border-bottom:1px solid var(--line)}
+.datebar .in{max-width:1240px;margin:0 auto;display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+.datebar input{flex:1 1 150px;max-width:220px;font-weight:600}
+.datebar .note{flex:1 1 100%}
+.days{display:flex;gap:6px;overflow-x:auto;padding-bottom:2px;flex:1 1 100%}
+.days button{min-height:36px;padding:0 12px;font-size:14px;flex:none}
+.days button.on{background:#0b1f4b;color:#fff;border-color:#0b1f4b}
 .empty{text-align:center;color:var(--mute);padding:40px 0}
 details summary{cursor:pointer;font-weight:600;min-height:32px}
 </style>
 </head>
 <body>
 <header>
-  <h1>Daily performance report</h1>
-  <p>Data daalo, har branch ki report image ban jayegi. Copy dabao aur WhatsApp group me paste karo.</p>
+  <div class="top">
+    <div>
+      <h1>Daily performance report</h1>
+      <p id="last">Data la rahe hain...</p>
+    </div>
+    <button id="refresh">Refresh</button>
+  </div>
 </header>
 
-<section class="band">
-  <div class="panel">
-    <div class="row">
-      <label class="f">Report date<input type="date" id="date"></label>
-      <label class="btn primary">Excel / CSV file chuno<input type="file" id="file" accept=".xlsx,.xls,.csv"></label>
-      <button id="sample">Sample data dekho</button>
-      <button id="install">Phone me install karo</button>
-      <label class="f">Branch column<select id="branchCol"></select></label>
-    </div>
-    <div class="row">
-      <label class="f">Team PIN<input type="password" inputmode="numeric" id="pin" autocomplete="off" placeholder="6 digit PIN" style="font:16px 'Red Hat Text',sans-serif;color:var(--ink);background:var(--bg);border:1px solid var(--line);border-radius:10px;padding:10px 12px;min-height:44px;width:150px"></label>
-      <button id="pull">Latest data lao</button>
-      <p class="note" id="sync" style="flex:1 1 220px">PIN daalne par aapka upload sabke liye save hoga, aur sabko wahi latest data dikhega.</p>
-    </div>
-    <details>
-      <summary>Ya Google Sheet se copy karke yahan paste karo</summary>
-      <textarea id="paste" placeholder="Sheet me header ke saath poora data select karo, Ctrl+C, phir yahan Ctrl+V"></textarea>
-      <button id="usePaste">Paste kiya data use karo</button>
-    </details>
-    <div>
-      <p class="note" style="margin-bottom:6px">Report me kaun se columns dikhane hain (aapki choice yaad rahegi):</p>
-      <div class="cols" id="cols"></div>
-    </div>
-    <p class="note" id="iosHint" hidden>iPhone par install: Safari me neeche Share button dabao, phir "Add to Home Screen" chuno.</p>
-    <p class="note" id="status">Abhi sample data dikh raha hai. Apna data upload karte hi reports update ho jayengi.</p>
+<div class="datebar">
+  <div class="in">
+    <button id="prev" aria-label="Pichhla din">&#9664;</button>
+    <input type="date" id="date" aria-label="Report date">
+    <button id="next" aria-label="Agla din">&#9654;</button>
+    <div class="days" id="days"></div>
   </div>
+</div>
+
+<section class="band" style="padding-top:16px">
+  <div class="grid" id="grid"><p class="empty">Data la rahe hain...</p></div>
 </section>
 
 <section class="band" style="padding-top:0">
-  <div class="grid" id="grid"></div>
+  <details class="panel" id="up">
+    <summary>Data upload aur settings (computer se)</summary>
+    <div class="row">
+      <label class="btn primary">CRM Excel upload karo<input type="file" id="file" accept=".xlsx,.xls,.csv"></label>
+      <button id="install">Phone me install karo</button>
+    </div>
+    <p class="note" id="upmsg">Excel me jitne din ka data hoga, sab din alag alag save ho jayenge. Phone app me refresh karte hi dikh jayega.</p>
+    <details>
+      <summary>Ya Google Sheet se copy karke paste karo</summary>
+      <textarea id="paste" placeholder="Sheet me header ke saath poora data select karo, Ctrl+C, phir yahan Ctrl+V"></textarea>
+      <button id="usePaste">Paste kiya data upload karo</button>
+    </details>
+    <label class="f">Branch column<select id="branchCol"></select></label>
+    <div>
+      <p class="note" style="margin-bottom:6px">Report me kaun se columns dikhane hain (is phone/computer par yaad rahega):</p>
+      <div class="cols" id="cols"></div>
+    </div>
+    <p class="note" id="iosHint" hidden>iPhone par install: Safari me neeche Share button dabao, phir "Add to Home Screen" chuno.</p>
+  </details>
 </section>
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
@@ -108,26 +126,21 @@ const PRESET = [
 ];
 const SUM = ['TC','PC','Total Secondary','Secondary (Modular)'];
 const BRANCHES = ['UP EAST','UP WEST','WEST BENGAL','BIHAR','JHARKHAND','RAJASTHAN','DELHI','HARYANA','CHHATISGRAH','J&K'];
-const SAMPLE = [
-  ['Zone','Branch','State','Reporting Manager','Date','SO Name','Employee Code','Designation','TC','PC','Visit Value Secondary','Secondary (Modular) Value','Phone Order Count Sec','Phone Order Value Sec','Total Secondary Value','Shop Face Time','N C TC','N C PC','N C Value','Attendance Time','First Check-in Time','KM','Working Period KM','Last Check-out Time','Attendance Stop Time','Total Working Time','Travel Time'],
-  ['North','UP EAST','UP','R. Mishra','25-11-2026','Rahul Verma','H101','SO','18','7','24500','6200','2','3100','27600','04:12','3','1','2100','09:31','10:02','64','58','18:21','18:40','08:19','02:05'],
-  ['North','UP EAST','UP','R. Mishra','25-11-2026','Amit Singh','H102','SO','15','5','18200','0','0','0','18200','03:40','2','0','0','10:20','10:48','52','49','18:05','18:15','07:17','01:50'],
-  ['North','UP EAST','UP','R. Mishra','25-11-2026','Vikas Gupta','H104','SO','21','9','31000','8800','1','1500','32500','05:02','4','2','4300','09:22','09:55','71','66','18:30','18:45','08:35','02:20'],
-  ['North','UP WEST','UP','S. Tyagi','25-11-2026','Sandeep Kumar','H201','SO','16','6','20500','4100','0','0','20500','03:55','1','1','1200','09:40','10:10','48','45','18:00','18:10','07:50','01:40'],
-  ['North','UP WEST','UP','S. Tyagi','25-11-2026','Neha Sharma','H202','ASM','12','4','15800','0','1','900','16700','03:10','2','0','0','09:35','10:05','39','36','17:50','18:00','07:45','01:30'],
-  ['East','BIHAR','Bihar','K. Jha','25-11-2026','Manoj Jha','H301','SO','19','8','26300','5400','0','0','26300','04:30','3','2','3800','09:45','10:15','58','54','18:25','18:35','08:10','02:00'],
-  ['North','UP EAST','UP','R. Mishra','25-11-2026','Rakesh Mishra','H100','BM','6','3','12000','2500','0','0','12000','02:10','0','0','0','09:15','09:50','35','30','18:40','18:50','08:50','01:30'],
-  ['East','BIHAR','Bihar','K. Jha','25-11-2026','Kamal Jha','H300','BM','5','2','8000','0','0','0','8000','01:50','0','0','0','09:20','10:00','30','28','18:10','18:20','08:10','01:20'],
-  ['East','BIHAR','Bihar','K. Jha','25-11-2026','Ravi Ranjan','H302','SO','11','3','9800','0','0','0','9800','02:45','1','0','0','11:00','11:25','41','38','18:30','18:40','07:05','01:55']
-];
-let head = [], rows = [], rowDates = [], defs = [], usingSample = true, desigIdx = -1;
+const SUB = /^\s*(UPA|UPM)\b[\s\-_:.)(]*/i;
+const SB = 'https://idldwilrbhkacucraxpk.supabase.co/rest/v1/rpc/', SBKEY = 'sb_publishable_6YcEmSu6ETpQduRMj0UALQ_UYI8OIC8';
+const store = {get(k){try{return JSON.parse(localStorage.getItem(k))}catch(e){return null}},set(k,v){try{localStorage.setItem(k,JSON.stringify(v))}catch(e){}}};
+const rpc = (fn, body) => fetch(SB+fn, {method:'POST', cache:'no-store', headers:{apikey:SBKEY, 'Content-Type':'application/json'}, body: JSON.stringify(body||{})}).then(r => { if (!r.ok) throw new Error('HTTP '+r.status); return r.json(); });
+
+let head = [], rows = [], defs = [], desigIdx = -1, dates = [], cur = null;
+const norm = t => String(t).toLowerCase().replace(/[^a-z0-9()&-]+/g,' ').trim();
+const iso = d => d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');
+const fmtDate = v => { const [y,m,d] = v.split('-'); return d+'-'+MON[+m-1]+'-'+y.slice(2); };
+const when = t => new Date(t).toLocaleString('en-IN', {day:'numeric', month:'short', hour:'numeric', minute:'2-digit'});
+const fmtNum = n => Math.round(n).toLocaleString('en-IN');
+const toBlob = c => new Promise(r => c.toBlob(r, 'image/png'));
+const t0 = new Date(), YDAY = iso(new Date(t0.getFullYear(), t0.getMonth(), t0.getDate() - 1));
 const isBM = r => desigIdx >= 0 && /^(bm|branch manager)$/i.test(String(r[desigIdx]).trim());
-const norm = t => t.toLowerCase().replace(/[^a-z0-9()&-]+/g,' ').trim();
-function makeDefs(){
-  const n = head.map(norm);
-  const found = PRESET.map(([label, al]) => ({label, idx: n.findIndex(h => al.includes(h))})).filter(d => d.idx >= 0);
-  return found.length >= 3 ? found : head.map((h,i) => ({label: h || ('Column '+(i+1)), idx: i}));
-}
+
 function parseDate(v){
   v = String(v || '').trim();
   if (!v) return null;
@@ -138,60 +151,29 @@ function parseDate(v){
   if (m = v.match(/^(\d{4})[-\/.](\d{1,2})[-\/.](\d{1,2})/)) return ymd(m[1], +m[2], +m[3]);
   if (m = v.match(/^(\d{1,2})[-\/. ]+([A-Za-z]{3,9})[-\/., ]+(\d{2,4})/)) return ymd(m[3], mon(m[2]), +m[1]);
   if (m = v.match(/^([A-Za-z]{3,9})[-\/. ]+(\d{1,2}),?[-\/. ]+(\d{2,4})/)) return ymd(m[3], mon(m[1]), +m[2]);
-  if (m = v.match(/^(\d{1,2})[-\/.](\d{1,2})[-\/.](\d{2,4})/)) {
-    const a = +m[1], b = +m[2];
-    return b > 12 ? ymd(m[3], a, b) : ymd(m[3], b, a);
-  }
+  if (m = v.match(/^(\d{1,2})[-\/.](\d{1,2})[-\/.](\d{2,4})/)) { const a = +m[1], b = +m[2]; return b > 12 ? ymd(m[3], a, b) : ymd(m[3], b, a); }
   return null;
 }
-const store = {get(k){try{return JSON.parse(localStorage.getItem(k))}catch(e){return null}},set(k,v){try{localStorage.setItem(k,JSON.stringify(v))}catch(e){}}};
+const dateCol = h => { let i = h.findIndex(x => /^date$/i.test(x)); if (i < 0) i = h.findIndex(x => /date/i.test(x) && !/time|stop|start/i.test(x)); return i; };
+const cellText = v => v == null ? '' : String(v).trim().replace(/^#N\/A$/,'');
 
-const today = new Date();
-const yday = new Date(today.getFullYear(), today.getMonth(), today.getDate() - 1);
-$('date').value = yday.getFullYear()+'-'+String(yday.getMonth()+1).padStart(2,'0')+'-'+String(yday.getDate()).padStart(2,'0');
-const defaultDate = $('date').value;
-const fmtDate = v => { const [y,m,d] = v.split('-'); return d+'-'+MON[+m-1]+'-'+y.slice(2); };
-
-function cellText(v){
-  if (v == null) return '';
-  if (v instanceof Date) return String(v.getHours()).padStart(2,'0')+':'+String(v.getMinutes()).padStart(2,'0');
-  return String(v).trim();
+function makeDefs(){
+  const n = head.map(norm);
+  const found = PRESET.map(([label, al]) => ({label, idx: n.findIndex(h => al.includes(h))})).filter(d => d.idx >= 0);
+  return found.length >= 3 ? found : head.map((h,i) => ({label: h || ('Column '+(i+1)), idx: i}));
 }
-
-function load(table, isSample, restoring){
-  table = table.filter(r => r.some(c => cellText(c) !== ''));
-  if (table.length < 2){ $('status').textContent = 'Data me header aur kam se kam ek row chahiye.'; return; }
-  let hr = table.findIndex(r => r.some(c => /^branch$/i.test(cellText(c))));
-  if (hr < 0) hr = 0;
-  head = table[hr].map(cellText);
-  rows = table.slice(hr+1).map(r => head.map((_,i) => cellText(r[i]).replace(/^#N\/A$/,'')));
-  defs = makeDefs();
-  desigIdx = head.findIndex(h => /designation/i.test(h));
-  let di = head.findIndex(h => /^date$/i.test(h));
-  if (di < 0) di = head.findIndex(h => /date/i.test(h) && !/time|stop|start/i.test(h));
-  rowDates = di >= 0 ? rows.map(r => parseDate(r[di])) : [];
-  const dates = [...new Set(rowDates.filter(Boolean))].sort();
-  const keep = store.get('selDate');
-  $('date').value = !isSample && restoring && keep && dates.includes(keep) ? keep : (!dates.length || dates.includes(defaultDate) ? defaultDate : dates[dates.length-1]);
-  if (!isSample && !restoring){ store.set('data', table); store.set('savedAt', Date.now()); pushShared(table); }
-  usingSample = isSample;
-  const bsel = $('branchCol');
-  bsel.innerHTML = '';
-  head.forEach((h,i) => { const o = document.createElement('option'); o.value = i; o.textContent = h || ('Column '+(i+1)); bsel.appendChild(o); });
+function branchIdx(){
   const saved = store.get('branchCol');
   let bi = head.indexOf(saved);
   if (bi < 0) bi = head.findIndex(h => /^branch$/i.test(h));
   if (bi < 0) bi = head.findIndex(h => /branch|region|location/i.test(h));
-  bsel.value = bi < 0 ? 0 : bi;
-  buildCols();
-  $('status').textContent = isSample ? 'Abhi sample data dikh raha hai. Apna data upload karte hi reports update ho jayengi.' : rows.length+' rows load hui. Data is phone/computer me save hai, refresh karne par bhi rahega.';
-  render();
+  return bi < 0 ? 0 : bi;
 }
-
-function buildCols(){
-  const saved = store.get('cols2');
-  const bi = +$('branchCol').value;
-  const box = $('cols'); box.innerHTML = '';
+function setupControls(){
+  const bsel = $('branchCol'); bsel.innerHTML = '';
+  head.forEach((h,i) => { const o = document.createElement('option'); o.value = i; o.textContent = h || ('Column '+(i+1)); bsel.appendChild(o); });
+  bsel.value = branchIdx();
+  const saved = store.get('cols2'), bi = +bsel.value, box = $('cols'); box.innerHTML = '';
   defs.forEach((d,k) => {
     if (d.idx === bi) return;
     const l = document.createElement('label');
@@ -204,26 +186,19 @@ function buildCols(){
 }
 const selCols = () => [...document.querySelectorAll('#cols input:checked')].map(c => +c.value);
 
-function statusColor(v){
-  if (/^(a|absent)$/i.test(v)) return '#c4123f';
-  if (/^(late|half ?day|hd)$/i.test(v)) return '#b86a00';
-  if (/^(p|present)$/i.test(v)) return '#118a4e';
-  return null;
-}
-
-function draw(branch, list, cols, bm){
+function draw(title, list, cols, bm){
   const S = 2, pad = 12, rowH = 30, F = 'Calibri, Carlito, Arial, sans-serif';
   const font = '14px '+F, bold = 'bold 14px '+F;
   const c = document.createElement('canvas'), x = c.getContext('2d');
   const lab = k => bm && defs[k].label === 'Name of SO' ? 'Name of BM' : defs[k].label;
   const hdr = ['S.No', ...cols.map(lab)];
-  const cell = (k,v) => SUM.includes(defs[k].label) && v !== '' && !isNaN(String(v).replace(/,/g,'')) ? fmtNum(+String(v).replace(/,/g,'')) : v;
+  const nameK = defs.findIndex(d => d.label === 'Name of SO');
+  const cell = (k,v) => k === nameK ? String(v).replace(SUB, '') : SUM.includes(defs[k].label) && v !== '' && !isNaN(String(v).replace(/,/g,'')) ? fmtNum(+String(v).replace(/,/g,'')) : v;
   const data = list.map((r,n) => [String(n+1), ...cols.map(k => cell(k, r[defs[k].idx]))]);
   const hasTot = !bm && cols.some(k => SUM.includes(defs[k].label));
   if (hasTot) data.push(['', ...cols.map((k,j) => j === 0 ? 'Total' : SUM.includes(defs[k].label) ? fmtNum(list.reduce((a,r) => a + (parseFloat(String(r[defs[k].idx]).replace(/,/g,'')) || 0), 0)) : '')]);
   const meas = (t,f) => { x.font = f; return x.measureText(t).width; };
   const w = hdr.map((h,j) => Math.max(meas(h,bold), ...data.map(r => meas(r[j], bold))) + 22);
-  const title = fmtDate($('date').value)+'  '+branch+(bm ? '  (BM)' : '');
   const tw = w.reduce((a,b) => a+b, 0), minW = meas(title, 'bold 20px '+F) + 40;
   const cw = tw < minW ? w.map(v => v*minW/tw) : w;
   const TW = Math.max(tw, minW), W = TW + pad*2;
@@ -241,12 +216,7 @@ function draw(branch, list, cols, bm){
     x.fillStyle = ri === 0 ? '#ffff00' : isTot ? '#d9e1f2' : '#fff';
     x.fillRect(pad, y, TW, rowH);
     let cx = pad;
-    r.forEach((v, j) => {
-      x.font = ri === 0 || isTot ? bold : font;
-      x.fillStyle = '#000';
-      x.fillText(v, cx + cw[j]/2, y + rowH/2 + 1);
-      cx += cw[j];
-    });
+    r.forEach((v, j) => { x.font = ri === 0 || isTot ? bold : font; x.fillStyle = '#000'; x.fillText(v, cx + cw[j]/2, y + rowH/2 + 1); cx += cw[j]; });
     y += rowH;
   });
   x.strokeStyle = '#000'; x.lineWidth = 1;
@@ -259,71 +229,124 @@ function draw(branch, list, cols, bm){
   return c;
 }
 
-const fmtNum = n => Math.round(n).toLocaleString('en-IN');
-const toBlob = c => new Promise(r => c.toBlob(r, 'image/png'));
+function empty(t){ const g = $('grid'); g.innerHTML = ''; const p = document.createElement('p'); p.className = 'empty'; p.textContent = t; g.appendChild(p); }
 
 function render(){
-  const grid = $('grid'); grid.innerHTML = '';
+  const grid = $('grid');
+  if (!cur) return;
+  if (!rows.length){ empty(fmtDate(cur)+' ka data abhi upload nahi hua hai.'); return; }
+  grid.innerHTML = '';
   const bi = +$('branchCol').value, cols = selCols();
-  if (!rows.length){ grid.innerHTML = '<p class="empty">Data load karo.</p>'; return; }
-  const sel = $('date').value;
-  const dated = rowDates.some(Boolean);
-  const di2 = head.findIndex(h => /date/i.test(h) && !/time|stop|start/i.test(h));
-  if (!dated && di2 >= 0 && !usingSample){ const p = document.createElement('p'); p.className = 'empty'; p.textContent = 'Date column ("'+head[di2]+'") ki date samajh nahi aayi, jaise: "'+(rows.find(r => r[di2]) || [])[di2]+'". Is line ka screenshot bhejo.'; grid.appendChild(p); return; }
-  const dayRows = dated ? rows.filter((r,i) => rowDates[i] === sel) : rows;
-  if (dated){
-    const dates = [...new Set(rowDates.filter(Boolean))].sort().map(fmtDate);
-    $('status').textContent = fmtDate(sel)+' ki '+dayRows.length+' rows dikh rahi hain. File me ye dates hain: '+dates.join(', ')+'.';
-  }
-  if (!dayRows.length){ const p = document.createElement('p'); p.className = 'empty'; p.textContent = fmtDate(sel)+' ka data is file me nahi hai. Upar date badlo ya sahi file chuno.'; grid.appendChild(p); return; }
-  const ord = b => { const i = BRANCHES.indexOf(b); return i < 0 ? 99 : i; };
+  const nameIdx = (defs.find(d => d.label === 'Name of SO') || {}).idx;
+  const key = r => { let b = (r[bi] || 'No branch').toUpperCase().trim(); const m = nameIdx != null && String(r[nameIdx]).match(SUB); return m ? b+' '+m[1].toUpperCase() : b; };
+  const ord = b => { const base = BRANCHES.findIndex(x => b === x || b.startsWith(x+' ')); return base < 0 ? 99 : base + (b.length > BRANCHES[base].length ? .5 : 0); };
   [[false, 'SO report'], [true, 'BM report']].forEach(([bm, heading]) => {
-  const groups = new Map();
-  dayRows.filter(r => isBM(r) === bm).forEach(r => { const b = (r[bi] || 'No branch').toUpperCase(); if (!groups.has(b)) groups.set(b, []); groups.get(b).push(r); });
-  if (!groups.size) return;
-  const h2 = document.createElement('h2'); h2.className = 'sec'; h2.textContent = heading; grid.appendChild(h2);
-  [...groups.keys()].sort((a,c) => ord(a)-ord(c) || a.localeCompare(c)).forEach(b => {
-    const canvas = draw(b, groups.get(b), cols, bm);
-    const card = document.createElement('div'); card.className = 'card';
-    const img = document.createElement('img'); img.src = canvas.toDataURL('image/png'); img.alt = 'Report '+b;
-    const bar = document.createElement('div'); bar.className = 'bar';
-    const name = document.createElement('b'); name.textContent = b+(bm ? ' BM' : '')+' ('+groups.get(b).length+')';
-    const msg = document.createElement('div'); msg.className = 'msg';
-    const say = (t, k) => { msg.textContent = t; msg.className = 'msg '+(k||''); };
-    const fname = (fmtDate($('date').value)+' '+b+(bm ? ' BM' : '')).replace(/[^\w-]+/g,'_')+'.png';
-    const copy = document.createElement('button'); copy.className = 'primary'; copy.textContent = 'Copy';
-    copy.addEventListener('click', async () => {
-      try {
-        if (!window.ClipboardItem || !navigator.clipboard?.write) throw new Error('no');
-        await navigator.clipboard.write([new ClipboardItem({'image/png': toBlob(canvas)})]);
-        say('Copy ho gaya. Ab WhatsApp group me paste karo.', 'ok');
-      } catch (e) {
-        say('Is browser me image copy nahi hui. Share dabao, ya image par long-press karke Copy chuno.', 'err');
-      }
+    const groups = new Map();
+    rows.filter(r => isBM(r) === bm).forEach(r => { const b = key(r); if (!groups.has(b)) groups.set(b, []); groups.get(b).push(r); });
+    if (!groups.size) return;
+    const h2 = document.createElement('h2'); h2.className = 'sec'; h2.textContent = heading; grid.appendChild(h2);
+    [...groups.keys()].sort((a,c) => ord(a)-ord(c) || a.localeCompare(c)).forEach(b => {
+      const title = fmtDate(cur)+'  '+b+(bm ? '  (BM)' : '');
+      const canvas = draw(title, groups.get(b), cols, bm);
+      const card = document.createElement('div'); card.className = 'card';
+      const img = document.createElement('img'); img.src = canvas.toDataURL('image/png'); img.alt = title;
+      const bar = document.createElement('div'); bar.className = 'bar';
+      const name = document.createElement('b'); name.textContent = b+(bm ? ' BM' : '')+' ('+groups.get(b).length+')';
+      const msg = document.createElement('div'); msg.className = 'msg';
+      const say = (t, k) => { msg.textContent = t; msg.className = 'msg '+(k||''); };
+      const fname = title.replace(/[^\w-]+/g,'_')+'.png';
+      const copy = document.createElement('button'); copy.className = 'primary'; copy.textContent = 'Copy';
+      copy.addEventListener('click', async () => {
+        try {
+          if (!window.ClipboardItem || !navigator.clipboard?.write) throw new Error('no');
+          await navigator.clipboard.write([new ClipboardItem({'image/png': toBlob(canvas)})]);
+          say('Copy ho gaya. Ab WhatsApp group me paste karo.', 'ok');
+        } catch (e) { say('Image copy nahi hui. Share dabao, ya image par long-press karke Copy chuno.', 'err'); }
+      });
+      const share = document.createElement('button'); share.textContent = 'Share';
+      share.addEventListener('click', async () => {
+        try {
+          const file = new File([await toBlob(canvas)], fname, {type:'image/png'});
+          if (!navigator.canShare?.({files:[file]})) throw new Error('no');
+          await navigator.share({files:[file], title: b});
+        } catch (e) { if (e.name !== 'AbortError') say('Share yahan available nahi hai. Download try karo.', 'err'); }
+      });
+      const dl = document.createElement('button'); dl.textContent = 'Download';
+      dl.addEventListener('click', () => { const a = document.createElement('a'); a.href = img.src; a.download = fname; document.body.appendChild(a); a.click(); a.remove(); });
+      bar.append(name, copy, share, dl);
+      card.append(img, bar, msg);
+      grid.appendChild(card);
     });
-    const share = document.createElement('button'); share.textContent = 'Share';
-    share.addEventListener('click', async () => {
-      try {
-        const file = new File([await toBlob(canvas)], fname, {type:'image/png'});
-        if (!navigator.canShare?.({files:[file]})) throw new Error('no');
-        await navigator.share({files:[file], title: b});
-      } catch (e) {
-        if (e.name !== 'AbortError') say('Share yahan available nahi hai. Download try karo.', 'err');
-      }
-    });
-    const dl = document.createElement('button'); dl.textContent = 'Download';
-    dl.addEventListener('click', async () => {
-      try {
-        const d = window.claude ? await window.claude.use('downloads') : null;
-        if (d) { await d.save({filename: fname, data: await toBlob(canvas)}); return; }
-      } catch (e) { say('Download nahi hua. Image par long-press karke save karo.', 'err'); return; }
-      const a = document.createElement('a'); a.href = img.src; a.download = fname; document.body.appendChild(a); a.click(); a.remove();
-    });
-    bar.append(name, copy, share, dl);
-    card.append(img, bar, msg);
-    grid.appendChild(card);
   });
+}
+
+function useDay(day){
+  head = day ? day.head : []; rows = day ? day.rows : [];
+  defs = makeDefs();
+  desigIdx = head.findIndex(h => /designation/i.test(h));
+  if (head.length) setupControls();
+  render();
+}
+
+function drawDays(){
+  const box = $('days'); box.innerHTML = '';
+  dates.slice(0, 14).forEach(d => {
+    const b = document.createElement('button'); b.textContent = fmtDate(d.d); if (d.d === cur) b.className = 'on';
+    b.addEventListener('click', () => showDate(d.d));
+    box.appendChild(b);
   });
+}
+
+async function showDate(d){
+  cur = d; $('date').value = d; store.set('selDate', d); drawDays();
+  const cache = store.get('day:'+d);
+  if (cache) useDay(cache); else empty('Data la rahe hain...');
+  try {
+    const day = await rpc('dpr_day', {p_date: d});
+    if (cur !== d) return;
+    if (day) { try { store.set('day:'+d, day); } catch (e) {} }
+    useDay(day);
+  } catch (e) { if (!cache) empty('Internet nahi hai. Net on karke Refresh dabao.'); }
+}
+
+async function refresh(keepDate){
+  $('last').textContent = 'Latest data la rahe hain...';
+  try {
+    dates = await rpc('dpr_dates');
+    store.set('dates', dates);
+    if (!dates.length) { $('last').textContent = 'Abhi tak koi data upload nahi hua. Computer se Excel upload karo.'; cur = YDAY; $('date').value = cur; drawDays(); empty('Neeche "Data upload" kholo aur CRM ki Excel upload karo.'); $('up').open = true; return; }
+    const newest = dates.reduce((a,b) => a.u > b.u ? a : b);
+    $('last').textContent = 'Last upload: '+when(newest.u)+'. Refresh karne par naya data aa jata hai.';
+    const has = d => dates.some(x => x.d === d);
+    const want = keepDate && cur && has(cur) ? cur : has(YDAY) ? YDAY : dates[0].d;
+    await showDate(want);
+  } catch (e) {
+    dates = store.get('dates') || [];
+    $('last').textContent = 'Internet nahi mila. Pichhla saved data dikh raha hai.';
+    const d = store.get('selDate') || YDAY; cur = d; $('date').value = d; drawDays();
+    useDay(store.get('day:'+d));
+  }
+}
+
+async function upload(table){
+  const msg = t => { $('upmsg').textContent = t; };
+  table = table.map(r => r.map(cellText)).filter(r => r.some(c => c !== ''));
+  let hr = table.findIndex(r => r.some(c => /^branch$/i.test(c)));
+  if (hr < 0) hr = 0;
+  const h = table[hr], body = table.slice(hr+1).map(r => h.map((_,i) => r[i] ?? ''));
+  if (!body.length) { msg('File me data nahi mila.'); return; }
+  const di = dateCol(h), days = {};
+  body.forEach(r => { const d = (di >= 0 && parseDate(r[di])) || $('date').value || YDAY; (days[d] = days[d] || {head: h, rows: []}).rows.push(r); });
+  const ks = Object.keys(days).sort();
+  msg('Upload ho raha hai...');
+  try {
+    const r = await rpc('dpr_upload', {p_days: days});
+    if (!r.ok) { msg(r.error === 'too_large' ? 'File bahut badi hai.' : r.error === 'too_many_days' ? 'Ek baar me 62 din se zyada data mat daalo.' : 'Upload nahi hua.'); return; }
+    ks.forEach(k => store.set('day:'+k, null));
+    msg('Upload ho gaya: '+ks.map(fmtDate).join(', ')+' ('+body.length+' rows). Phone app me Refresh dabao.');
+    cur = ks.includes(YDAY) ? YDAY : ks[ks.length-1];
+    await refresh(true);
+  } catch (e) { msg('Internet ki dikkat se upload nahi hua. Dobara try karo.'); }
 }
 
 $('file').addEventListener('change', async e => {
@@ -337,8 +360,7 @@ $('file').addEventListener('change', async e => {
       const hs = [];
       for (let c = R.s.c; c <= R.e.c; c++) { const x = ws[XLSX.utils.encode_cell({r,c})]; hs.push(x ? String(x.v).trim() : ''); }
       if (!hs.some(h => /^branch$/i.test(h))) continue;
-      dc = hs.findIndex(h => /^date$/i.test(h));
-      if (dc < 0) dc = hs.findIndex(h => /date/i.test(h) && !/time|stop|start/i.test(h));
+      dc = dateCol(hs);
       if (dc >= 0) dc += R.s.c;
     }
     if (dc >= 0) for (let r = R.s.r; r <= R.e.r; r++) {
@@ -347,62 +369,32 @@ $('file').addEventListener('change', async e => {
       const d = new Date(Date.UTC(1899,11,30) + Math.floor(c.v)*86400000);
       c.w = d.getUTCFullYear()+'-'+String(d.getUTCMonth()+1).padStart(2,'0')+'-'+String(d.getUTCDate()).padStart(2,'0');
     }
-    load(XLSX.utils.sheet_to_json(ws, {header:1, raw:false, defval:''}), false);
-  } catch (err) { $('status').textContent = 'File padh nahi paye. Excel (.xlsx) ya CSV file chuniye.'; }
+    await upload(XLSX.utils.sheet_to_json(ws, {header:1, raw:false, defval:''}));
+  } catch (err) { $('upmsg').textContent = 'File padh nahi paye. Excel (.xlsx) ya CSV file chuniye.'; }
   e.target.value = '';
 });
 $('usePaste').addEventListener('click', () => {
   const t = $('paste').value.trim(); if (!t) return;
   const sep = t.includes('\t') ? '\t' : ',';
-  load(t.split(/\r?\n/).map(l => l.split(sep)), false);
+  upload(t.split(/\r?\n/).map(l => l.split(sep)));
 });
-$('sample').addEventListener('click', () => load(SAMPLE, true));
-$('branchCol').addEventListener('change', () => { store.set('branchCol', head[+$('branchCol').value]); buildCols(); render(); });
-$('date').addEventListener('change', () => { store.set('selDate', $('date').value); render(); });
-const SB = 'https://idldwilrbhkacucraxpk.supabase.co/rest/v1/rpc/', SBKEY = 'sb_publishable_6YcEmSu6ETpQduRMj0UALQ_UYI8OIC8';
-const rpc = (fn, body) => fetch(SB+fn, {method:'POST', headers:{apikey:SBKEY, 'Content-Type':'application/json'}, body: JSON.stringify(body)}).then(r => { if (!r.ok) throw new Error(r.status); return r.json(); });
-const sync = t => { $('sync').textContent = t; };
-const when = t => new Date(t).toLocaleString('en-IN', {dateStyle:'medium', timeStyle:'short'});
-$('pin').value = store.get('pin') || '';
-$('pin').addEventListener('change', () => { store.set('pin', $('pin').value.trim()); pullShared(true); });
-async function pushShared(table){
-  const pin = $('pin').value.trim(); if (!pin) { sync('Data sirf is device me save hua. Sabke liye save karne ko Team PIN daalo.'); return; }
-  sync('Sabke liye save ho raha hai...');
-  try {
-    const r = await rpc('dpr_save', {p_pin: pin, p_payload: {table}});
-    if (!r.ok) { sync(r.error === 'too_large' ? 'File bahut badi hai, sabke liye save nahi hui.' : 'PIN galat hai. Data sirf is device me save hua.'); return; }
-    store.set('savedAt', Date.parse(r.updated_at) || Date.now());
-    sync('Sabke liye save ho gaya ('+when(r.updated_at)+'). Jo bhi link kholega, use yahi data dikhega.');
-  } catch (e) { sync('Internet ki dikkat se sabke liye save nahi hua. Dobara upload karo.'); }
-}
-async function pullShared(force){
-  const pin = $('pin').value.trim(); if (!pin) { if (force) sync('Pehle Team PIN daalo.'); return; }
-  sync('Latest data la rahe hain...');
-  try {
-    const r = await rpc('dpr_get', {p_pin: pin});
-    if (!r.ok) { sync('PIN galat hai.'); return; }
-    if (!r.payload || !r.payload.table) { sync('Abhi tak kisi ne data upload nahi kiya.'); return; }
-    const t = Date.parse(r.updated_at);
-    if (force || !store.get('savedAt') || t > store.get('savedAt')) {
-      store.set('data', r.payload.table); store.set('savedAt', t);
-      load(r.payload.table, false, true);
-    }
-    sync('Latest data: '+when(r.updated_at)+' ka upload.');
-  } catch (e) { sync('Internet ki dikkat se latest data nahi aaya. Purana saved data dikh raha hai.'); }
-}
-$('pull').addEventListener('click', () => pullShared(true));
-(document.fonts ? document.fonts.ready : Promise.resolve()).then(() => {
-  pullShared(false);
-  const saved = store.get('data');
-  if (saved && saved.length > 1) load(saved, false, true); else load(SAMPLE, true);
-  if (saved && saved.length > 1){ const t = store.get('savedAt'); $('status').textContent += t ? ' (Pichhli upload: '+new Date(t).toLocaleString('en-IN', {dateStyle:'medium', timeStyle:'short'})+')' : ''; }
-});
+$('branchCol').addEventListener('change', () => { store.set('branchCol', head[+$('branchCol').value]); setupControls(); render(); });
+$('date').addEventListener('change', () => { if ($('date').value) showDate($('date').value); });
+const step = n => { const [y,m,d] = (cur || YDAY).split('-').map(Number); showDate(iso(new Date(y, m-1, d+n))); };
+$('prev').addEventListener('click', () => step(-1));
+$('next').addEventListener('click', () => step(1));
+$('refresh').addEventListener('click', () => refresh(true));
+document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') refresh(true); });
+
 let deferred = null;
 window.addEventListener('beforeinstallprompt', e => { e.preventDefault(); deferred = e; $('install').style.display = 'inline-flex'; });
 $('install').addEventListener('click', async () => { if (!deferred) return; deferred.prompt(); await deferred.userChoice; deferred = null; $('install').style.display = 'none'; });
 const standalone = matchMedia('(display-mode: standalone)').matches || navigator.standalone;
 if (/iphone|ipad|ipod/i.test(navigator.userAgent) && !standalone) $('iosHint').hidden = false;
 if ('serviceWorker' in navigator && location.protocol === 'https:') navigator.serviceWorker.register('sw.js').catch(() => {});
+
+cur = store.get('selDate') || YDAY; $('date').value = cur;
+(document.fonts ? document.fonts.ready : Promise.resolve()).then(() => refresh(false));
 }
 </script>
 </body>

@@ -1,5 +1,5 @@
 // Network first, so the newest version always loads when online; cache is only an offline fallback.
-const C = 'daily-report-v1';
+const C = 'daily-report-v2';
 self.addEventListener('install', e => self.skipWaiting());
 self.addEventListener('activate', e => e.waitUntil(self.clients.claim()));
 self.addEventListener('fetch', e => {
