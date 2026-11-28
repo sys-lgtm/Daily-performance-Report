@@ -134,6 +134,7 @@ const norm = t => String(t).toLowerCase().replace(/[^a-z0-9()&-]+/g,' ').trim();
 const iso = d => d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');
 const fmtDate = v => { const [y,m,d] = v.split('-'); return d+'-'+MON[+m-1]+'-'+y.slice(2); };
 const when = t => new Date(t).toLocaleString('en-IN', {day:'numeric', month:'short', hour:'numeric', minute:'2-digit'});
+const mins = v => { const m = String(v || '').match(/(\d{1,2}):(\d{2})(?::(\d{2}))?\s*([ap]\.?m)?/i); if (!m) return null; let h = +m[1]; const ap = (m[4] || '').toLowerCase(); if (ap.startsWith('p') && h < 12) h += 12; if (ap.startsWith('a') && h === 12) h = 0; return h*60 + +m[2] + (+m[3] || 0)/60; };
 const fmtNum = n => Math.round(n).toLocaleString('en-IN');
 const toBlob = c => new Promise(r => c.toBlob(r, 'image/png'));
 const t0 = new Date(), YDAY = iso(new Date(t0.getFullYear(), t0.getMonth(), t0.getDate() - 1));
@@ -194,6 +195,10 @@ function draw(title, list, cols, bm){
   const nameK = defs.findIndex(d => d.label === 'Name of SO');
   const cell = (k,v) => k === nameK ? String(v).replace(SUB, '') : SUM.includes(defs[k].label) && v !== '' && !isNaN(String(v).replace(/,/g,'')) ? fmtNum(+String(v).replace(/,/g,'')) : v;
   const data = list.map((r,n) => [String(n+1), ...cols.map(k => cell(k, r[defs[k].idx]))]);
+  // Red rules: late check-in, short working time, short shop face time. All three on one row: whole row red.
+  const RULES = {'First Check-in': m => m > 11*60, 'Working Time': m => m < 8*60, 'Shop Face Time': m => m < 3*60};
+  const bad = list.map(r => cols.map(k => { const f = RULES[defs[k].label], m = mins(r[defs[k].idx]); return !!(f && m != null && f(m)); }));
+  const allBad = list.map(r => Object.keys(RULES).every(L => { const k = defs.findIndex(d => d.label === L); const m = k < 0 ? null : mins(r[defs[k].idx]); return m != null && RULES[L](m); }));
   const hasTot = !bm && cols.some(k => SUM.includes(defs[k].label));
   if (hasTot) data.push(['', ...cols.map((k,j) => j === 0 ? 'Total' : SUM.includes(defs[k].label) ? fmtNum(list.reduce((a,r) => a + (parseFloat(String(r[defs[k].idx]).replace(/,/g,'')) || 0), 0)) : '')]);
   const meas = (t,f) => { x.font = f; return x.measureText(t).width; };
@@ -212,10 +217,17 @@ function draw(title, list, cols, bm){
   const top = pad;
   [hdr, ...data].forEach((r, ri) => {
     const isTot = hasTot && ri === data.length;
-    x.fillStyle = ri === 0 ? '#ffff00' : isTot ? '#d9e1f2' : '#fff';
+    const di = ri - 1, rowBad = di >= 0 && di < list.length && allBad[di];
+    x.fillStyle = ri === 0 ? '#ffff00' : isTot ? '#d9e1f2' : rowBad ? '#ff9b9b' : '#fff';
     x.fillRect(pad, y, TW, rowH);
     let cx = pad;
-    r.forEach((v, j) => { x.font = ri === 0 || isTot ? bold : font; x.fillStyle = '#000'; x.fillText(v, cx + cw[j]/2, y + rowH/2 + 1); cx += cw[j]; });
+    r.forEach((v, j) => {
+      const cb = di >= 0 && di < list.length && j > 0 && bad[di][j-1];
+      if (cb && !rowBad) { x.fillStyle = '#ffc7ce'; x.fillRect(cx, y, cw[j], rowH); }
+      x.font = ri === 0 || isTot || cb || rowBad ? bold : font;
+      x.fillStyle = cb ? '#c00000' : '#000';
+      x.fillText(v, cx + cw[j]/2, y + rowH/2 + 1); cx += cw[j];
+    });
     y += rowH;
   });
   x.strokeStyle = '#000'; x.lineWidth = 1;
